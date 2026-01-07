@@ -20,6 +20,7 @@
     "fast-xml-parser": "^5.3.3",
     "groq-sdk": "^0.37.0",
     "jsonwebtoken": "^9.0.2",
+    "mongodb": "^7.0.0",
     "mongoose": "^8.19.3",
     "nodemailer": "^7.0.11",
     "nodemon": "^3.1.11"
