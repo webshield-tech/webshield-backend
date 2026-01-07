@@ -1,0 +1,202 @@
+
+======================================================================
+           WEBSHIELD SECURITY SCAN REPORT
+======================================================================
+
+SCAN INFORMATION:
+-----------------
+Scan ID        : 695b71701e4e4021ab3b6025
+Target URL     : https://badssl.com/
+Scan Type      : SSL
+Scan Date      : 1/5/2026, 1:08:16 PM
+Report Date    : 1/5/2026, 1:09:46 PM
+Status         : COMPLETED
+
+======================================================================
+           AI SECURITY ANALYSIS
+======================================================================
+
+**SSL/TLS Scan Results Analysis**
+
+**Certificate Information:**
+- The certificate subject is *.badssl.com, indicating it's a wildcard certificate.
+- The certificate is valid from November 18, 2025, to February 16, 2026.
+
+**Security Risks:**
+- 36 total issues found in the SSL/TLS scan.
+
+**Port/Service Assessment:**
+No open ports/services are listed in the provided scan data.
+
+**Risk Level:**
+High - The presence of 36 issues in the SSL/TLS scan suggests potential security vulnerabilities.
+
+**Actionable Recommendations:**
+
+1. **Update Certificate:** The certificate is valid until February 16, 2026. Consider updating it before it expires to prevent potential security risks.
+2. **Address SSL/TLS Issues:** Investigate and resolve the 36 issues found in the SSL/TLS scan to ensure the site's security.
+3. **Conduct Regular Security Audits:** Regularly scan the site for security vulnerabilities to maintain its security posture.
+4. **Implement HTTPS:** Ensure all traffic is encrypted using HTTPS to protect user data.
+5. **Monitor Certificate Expiration:** Set up notifications to remind you when the certificate is about to expire, ensuring timely updates.
+
+======================================================================
+           RAW SCAN RESULTS
+======================================================================
+
+
+SSL/TLS SCAN RESULTS:
+---------------------
+Total Issues: 36
+
+CERTIFICATE DETAILS:
+Subject: *.badssl.com
+Issuer: R13
+Valid From: Nov 18 20:02:47 2025 GMT
+Valid To: Feb 16 20:02:46 2026 GMT
+Signature Algorithm: sha256WithRSAEncryption
+
+TLS SUPPORT:
+✓ TLS 1.2 supported
+✓ TLS 1.3 supported
+
+ISSUES:
+1. Deprecated protocol: SSLv2     disabled
+2. Deprecated protocol: SSLv3     disabled
+3. Deprecated protocol: TLSv1.0   enabled
+4. Deprecated protocol: TLSv1.1   enabled
+5. Deprecated protocol: TLSv1.1 not vulnerable to heartbleed
+6. Deprecated protocol: TLSv1.0 not vulnerable to heartbleed
+7. Deprecated protocol: Preferred TLSv1.1  128 bits  ECDHE-RSA-AES128-SHA          Curve P-256 DHE 256
+8. Deprecated protocol: Accepted  TLSv1.1  256 bits  ECDHE-RSA-AES256-SHA          Curve P-256 DHE 256
+9. Deprecated protocol: Accepted  TLSv1.1  128 bits  DHE-RSA-AES128-SHA            DHE 2048 bits
+10. Deprecated protocol: Accepted  TLSv1.1  256 bits  DHE-RSA-AES256-SHA            DHE 2048 bits
+11. Deprecated protocol: Accepted  TLSv1.1  128 bits  AES128-SHA
+12. Deprecated protocol: Accepted  TLSv1.1  256 bits  AES256-SHA
+13. Deprecated protocol: Accepted  TLSv1.1  256 bits  DHE-RSA-CAMELLIA256-SHA       DHE 2048 bits
+14. Deprecated protocol: Accepted  TLSv1.1  256 bits  CAMELLIA256-SHA
+15. Deprecated protocol: Accepted  TLSv1.1  128 bits  DHE-RSA-CAMELLIA128-SHA       DHE 2048 bits
+16. Deprecated protocol: Accepted  TLSv1.1  128 bits  CAMELLIA128-SHA
+17. Deprecated protocol: Accepted  TLSv1.1  112 bits  TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
+18. Deprecated protocol: Accepted  TLSv1.1  112 bits  TLS_RSA_WITH_3DES_EDE_CBC_SHA
+19. Deprecated protocol: Preferred TLSv1.0  128 bits  ECDHE-RSA-AES128-SHA          Curve P-256 DHE 256
+20. Deprecated protocol: Accepted  TLSv1.0  256 bits  ECDHE-RSA-AES256-SHA          Curve P-256 DHE 256
+21. Deprecated protocol: Accepted  TLSv1.0  128 bits  DHE-RSA-AES128-SHA            DHE 2048 bits
+22. Deprecated protocol: Accepted  TLSv1.0  256 bits  DHE-RSA-AES256-SHA            DHE 2048 bits
+23. Deprecated protocol: Accepted  TLSv1.0  128 bits  AES128-SHA
+24. Deprecated protocol: Accepted  TLSv1.0  256 bits  AES256-SHA
+25. Deprecated protocol: Accepted  TLSv1.0  256 bits  DHE-RSA-CAMELLIA256-SHA       DHE 2048 bits
+26. Deprecated protocol: Accepted  TLSv1.0  256 bits  CAMELLIA256-SHA
+27. Deprecated protocol: Accepted  TLSv1.0  128 bits  DHE-RSA-CAMELLIA128-SHA       DHE 2048 bits
+28. Deprecated protocol: Accepted  TLSv1.0  128 bits  CAMELLIA128-SHA
+29. Deprecated protocol: Accepted  TLSv1.0  112 bits  TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
+30. Deprecated protocol: Accepted  TLSv1.0  112 bits  TLS_RSA_WITH_3DES_EDE_CBC_SHA
+31. Weak cipher: Accepted  TLSv1.2  112 bits  TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
+32. Weak cipher: Accepted  TLSv1.2  112 bits  TLS_RSA_WITH_3DES_EDE_CBC_SHA
+33. Weak cipher: Accepted  TLSv1.1  112 bits  TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
+34. Weak cipher: Accepted  TLSv1.1  112 bits  TLS_RSA_WITH_3DES_EDE_CBC_SHA
+35. Weak cipher: Accepted  TLSv1.0  112 bits  TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
+36. Weak cipher: Accepted  TLSv1.0  112 bits  TLS_RSA_WITH_3DES_EDE_CBC_SHA
+
+Raw Output (excerpt):
+Version: 2.1.5
+OpenSSL 3.5.4 30 Sep 2025
+
+Connected to 104.154.89.105
+
+Testing SSL server badssl.com on port 443 using SNI name badssl.com
+
+  SSL/TLS Protocols:
+SSLv2     disabled
+SSLv3     disabled
+TLSv1.0   enabled
+TLSv1.1   enabled
+TLSv1.2   enabled
+TLSv1.3   disabled
+
+  TLS Fallback SCSV:
+Server supports TLS Fallback SCSV
+
+  TLS renegotiation:
+Secure session renegotiation supported
+
+  TLS Compression:
+Compression disabled
+
+  Heartbleed:
+TLSv1.2 not vulnerable to heartbleed
+TLSv1.1 not vulnerable to heartbleed
+TLSv1.0 not vulnerable to heartbleed
+
+  Supported Server Cipher(s):
+Preferred TLSv1.2  128 bits  ECDHE-RSA-AES128-GCM-SHA256   Curve P-256 DHE 256
+Accepted  TLSv1.2  256 bits  ECDHE-RSA-AES256-GCM-SHA384   Curve P-256 DHE 256
+Accepted  TLSv1.2  128 bits  DHE-RSA-AES128-GCM-SHA256     DHE 2048 bits
+Accepted  TLSv1.2  256 bits  DHE-RSA-AES256-GCM-SHA384     DHE 2048 bits
+Accepted  TLSv1.2  128 bits  ECDHE-RSA-AES128-SHA256       Curve P-256 DHE 256
+Accepted  TLSv1.2  128 bits  ECDHE-RSA-AES128-SHA          Curve P-256 DHE 256
+Accepted  TLSv1.2  256 bits  ECDHE-RSA-AES256-SHA384       Curve P-256 DHE 256
+Accepted  TLSv1.2  256 bits  ECDHE-RSA-AES256-SHA          Curve P-256 DHE 256
+Accepted  TLSv1.2  128 bits  DHE-RSA-AES128-SHA256         DHE 2048 bits
+Accepted  TLSv1.2  128 bits  DHE-RSA-AES128-SHA            DHE 2048 bits
+Accepted  TLSv1.2  256 bits  DHE-RSA-AES256-SHA256         DHE 2048 bits
+Accepted  TLSv1.2  256 bits  DHE-RSA-AES256-SHA            DHE 2048 bits
+Accepted  TLSv1.2  128 bits  AES128-GCM-SHA256            
+Accepted  TLSv1.2  256 bits  AES256-GCM-SHA384            
+Accepted  TLSv1.2  128 bits  AES128-SHA256                
+Accepted  TLSv1.2  256 bits  AES256-SHA256                
+Accepted  TLSv1.2  128 bits  AES128-SHA                   
+Accepted  TLSv1.2  256 bits  AES256-SHA                   
+Accepted  TLSv1.2  256 bits  DHE-RSA-CAMELLIA256-SHA       DHE 2048 bits
+Accepted  TLSv1.2  256 bits  CAMELLIA256-SHA              
+Accepted  TLSv1.2  128 bits  DHE-RSA-CAMELLIA128-SHA       DHE 2048 bits
+Accepted  TLSv1.2  128 bits  CAMELLIA128-SHA              
+Accepted  TLSv1.2  112 bits  TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
+Accepted  TLSv1.2  112 bits  TLS_RSA_WITH_3DES_EDE_CBC_SHA
+Preferred TLSv1.1  128 bits  ECDHE-RSA-AES128-SHA          Curve P-256 DHE 256
+Accepted  TLSv1.1  256 bits  ECDHE-RSA-AES256-SHA          Curve P-256 DHE 256
+Accepted  TLSv1.1  128 bits  DHE-RSA-AES128-SHA            DHE 2048 bits
+Accepted  TLSv1.1  256 bits  DHE-RSA-AES256-SHA            DHE 2048 bits
+Accepted  TLSv1.1  128 bits  AES128-SHA                   
+Accepted  TLSv1.1  256 bits  AES256-SHA                   
+Accepted  TLSv1.1  256 bits  DHE-RSA-CAMELLIA256-SHA       DHE 2048 bits
+Accepted  TLSv1.1  256 bits  CAMELLIA256-SHA              
+Accepted  TLSv1.1  128 bits  DHE-RSA-CAMELLIA128-SHA       DHE 2048 bits
+Accepted  TLSv1.1  128 bits  CAMELLIA128-SHA              
+Accepted  TLSv1.1  112 bits  TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
+Accepted  TLSv1.1  112 bits  TLS_RSA_WITH_3DES_EDE_CBC_SHA
+Preferred TLSv1.0  128 bits  ECDHE-RSA-AES128-SHA          Curve P-256 DHE 256
+Accepted  TLSv1.0  256 bits  ECDHE-RSA-AES256-SHA          Curve P-256 DHE 256
+Accepted  TLSv1.0  128 bits  DHE-RSA-AES128-SHA            DHE 2048 bits
+Accepted  TLSv1.0  256 bits  DHE-RSA-AES256-SHA            DHE 2048 bits
+Accepted  TLSv1.0  128 bits  AES128-SHA                   
+Accepted  TLSv1.0  256 bits  AES256-SHA                   
+Accepted  TLSv1.0  256 bits  DHE-RSA-CAMELLIA256-SHA       DHE 2048 bits
+Accepted  TLSv1.0  256 bits  CAMELLIA256-SHA              
+Accepted  TLSv1.0  128 bits  DHE-RSA-CAMELLIA128-SHA       DHE 2048 bits
+Accepted  TLSv1.0  128 bits  CAMELLIA128-SHA              
+Accepted  TLSv1.0  112 bits  TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
+Accepted  TLSv1.0  112 bits  TLS_RSA_WITH_3DES_EDE_CBC_SHA
+
+  Server Key Exchange Group(s):
+TLSv1.2  128 bits  secp256r1 (NIST P-256)
+
+  SSL Certificate:
+Signature Algorithm: sha256WithRSAEncryption
+RSA Key Strength:    2048
+
+Subject:  *.badssl.com
+Altnames: DNS:*.badssl.com, DNS:badssl.com
+Issuer:   R13
+
+Not valid before: Nov 18 20:02:47 2025 GMT
+Not valid after:  Feb 16 20:02:46 2026 GMT
+
+
+
+======================================================================
+           END OF REPORT
+======================================================================
+
+Generated by WebShield Security Scanner
+Report ID:  695b71701e4e4021ab3b6025
+© 2026 WebShield

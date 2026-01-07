@@ -1,0 +1,5 @@
+node_modules
+.env
+**/helper/
+src/utils/helper/
+./home/husnain/Final's Project/webShield/backend/src/webshield-db4b7-firebase-adminsdk-fbsvc-8a406e2f68.jsonwebshield-db4b7-firebase-adminsdk*.json

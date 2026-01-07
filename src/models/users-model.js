@@ -1,0 +1,96 @@
+import bcrypt from "bcrypt";
+import { User } from "./users-mongoose.js";
+import jwt from "jsonwebtoken";
+import dotenv from "dotenv";
+
+dotenv.config();
+
+export async function createUser(user) {
+  try {
+    const existingUser = await User.findOne({
+      $or: [{ username: user.username }, { email: user.email }],
+    });
+
+    if (existingUser) {
+      if (existingUser.username === user.username) {
+        throw new Error("Username already exists");
+      }
+      if (existingUser.email === user.email) {
+        throw new Error("Email already exists");
+      }
+    }
+
+    // Use async bcrypt methods (non-blocking)
+    const salt = await bcrypt.genSalt(10);
+    const hashedPass = await bcrypt.hash(user.password, salt);
+
+    // Create a Mongoose model instance (do NOT call createUser recursively)
+    const newUser = new User({
+      username: user.username,
+      email: user.email,
+      password: hashedPass,
+      role: user.role || "user",
+      scanLimit: user.scanLimit != null ? user.scanLimit : 15,
+      usedScan: user.usedScan != null ? user.usedScan : 0,
+    });
+
+    const savedUser = await newUser.save();
+    return savedUser;
+  } catch (error) {
+    console.error("Error saving User:", error.message);
+    throw error;
+  }
+}
+
+// Optionally keep verifyUser here (no change) or move to controller as needed
+export async function verifyUser(user) {
+  try {
+    const identifier = user.emailOrUsername;
+    const password = user.password;
+
+    const userExists = await User.findOne({
+      $or: [{ email: identifier }, { username: identifier }],
+    });
+
+    if (!userExists) {
+      return {
+        error: "User does not exist",
+      };
+    }
+
+    // COMPARING PASSWORD
+    const isPasswordValid = await bcrypt.compare(password, userExists.password);
+
+    if (isPasswordValid) {
+      const token = jwt.sign(
+        {
+          username: userExists.username,
+          email: userExists.email,
+          role: userExists.role,
+          userId: userExists._id,
+        },
+        process.env.JWT_SECRET,
+        { expiresIn: "2d" }
+      );
+      return {
+        success: true,
+        message: "You are logged in",
+        token: token,
+        user: {
+          username: userExists.username,
+          email: userExists.email,
+        },
+      };
+    } else {
+      return {
+        success: false,
+        error: "Your password is incorrect",
+      };
+    }
+  } catch (error) {
+    console.error("Error verifying user:", error);
+    return {
+      error: "Internal server error during verification",
+    };
+  }
+}

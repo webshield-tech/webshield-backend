@@ -1,0 +1,199 @@
+
+======================================================================
+           WEBSHIELD SECURITY SCAN REPORT
+======================================================================
+
+SCAN INFORMATION:
+-----------------
+Scan ID        : 695b60a061e3a97b32d2e979
+Target URL     : https://zero.webappsecurity.com/
+Scan Type      : NMAP
+Scan Date      : 1/5/2026, 11:56:32 AM
+Report Date    : 1/5/2026, 11:58:27 AM
+Status         : COMPLETED
+
+======================================================================
+           AI SECURITY ANALYSIS
+======================================================================
+
+**Port/Service Assessment:**
+
+* Port 80 (tcpwrapped): This port is likely HTTP, but the "tcpwrapped" status indicates that the server is not responding with standard HTTP headers. This could be a sign of a custom or restricted HTTP server. **Risk: Moderate** (due to lack of standard HTTP headers)
+* Port 443 (ssl/http): This port is HTTPS, using Apache httpd 2.2.6 with a valid SSL certificate issued by DigiCert. The certificate is valid until 2022-05-04. **Risk: Low** (HTTPS is secure, but the outdated Apache version may be vulnerable to known exploits)
+* Port 8080 (tcpwrapped): This port is likely HTTP, but like Port 80, it's not responding with standard HTTP headers. **Risk: Moderate** (due to lack of standard HTTP headers)
+
+**Risk Level:** Moderate (due to potential security risks associated with non-standard HTTP servers and outdated Apache version)
+
+**Actionable Recommendations:**
+
+1. **Update Apache version**: The outdated Apache version 2.2.6 may be vulnerable to known exploits. Consider updating to a newer version.
+2. **Use standard HTTP headers**: Ensure that the HTTP servers on Ports 80 and 8080 respond with standard HTTP headers to avoid potential security risks.
+3. **Monitor certificate expiration**: The SSL certificate for Port 443 is valid until 2022-05-04. Monitor certificate expiration dates to ensure timely renewals.
+4. **Implement secure HTTP methods**: Remove or restrict potentially risky HTTP methods (e.g., PUT, DELETE, TRACE, PATCH) on all HTTP servers.
+5. **Conduct regular security audits**: Regularly scan for vulnerabilities and perform security audits to identify and address potential security risks.
+
+======================================================================
+           RAW SCAN RESULTS
+======================================================================
+
+
+NMAP SCAN RESULTS:
+------------------
+Open Ports: 3
+
+80/tcp tcpwrapped
+443/tcp ssl/http   Apache httpd 2.2.6 ((Win32) mod_ssl/2.2.6 OpenSSL/0.9.8e mod_jk/1.2.40)
+8080/tcp tcpwrapped
+
+HOST INFORMATION:
+
+SERVICE DETAILS:
+80/tcp tcpwrapped
+| http-methods:
+|   Supported Methods: GET HEAD POST PUT DELETE TRACE OPTIONS PATCH
+|_  Potentially risky methods: PUT DELETE TRACE PATCH
+|_http-title: Zero - Personal Banking - Loans - Credit Cards
+|_http-server-header: Apache-Coyote/1.1
+443/tcp ssl/http   Apache httpd 2.2.6 ((Win32) mod_ssl/2.2.6 OpenSSL/0.9.8e mod_jk/1.2.40)
+| sslv2:
+|   ciphers:
+| ssl-cert: Subject: commonName=zero.webappsecurity.com/organizationName=Micro Focus LLC/stateOrProvinceName=California/countryName=US
+| Subject Alternative Name: DNS:zero.webappsecurity.com
+| Issuer: commonName=DigiCert TLS RSA SHA256 2020 CA1/organizationName=DigiCert Inc/countryName=US
+| Public Key type: rsa
+| Public Key bits: 2048
+| Signature Algorithm: sha256WithRSAEncryption
+| Not valid before: 2021-04-26T00:00:00
+| Not valid after:  2022-05-04T23:59:59
+| MD5:     a3c7 6d49 e492 0890 859a d111 889e 5d53
+| SHA-1:   38b7 1430 838e 0e8e 7d92 44a3 4610 5640 1ec8 ad0d
+|_SHA-256: b02a 9cda 2338 5967 209c e506 fea9 15a0 926b 4683 eb89 a81f 015b 8c31 2bb9 3cfd
+|_ssl-date: 2026-01-05T06:57:28+00:00; -2s from scanner time.
+| http-methods:
+|   Supported Methods: GET HEAD POST OPTIONS TRACE
+|_  Potentially risky methods: TRACE
+|_http-server-header: Apache/2.2.6 (Win32) mod_ssl/2.2.6 OpenSSL/0.9.8e mod_jk/1.2.40
+|_http-title: Site doesn't have a title (text/html).
+8080/tcp tcpwrapped
+|_http-server-header: Apache-Coyote/1.1
+|_http-title: Zero - Personal Banking - Loans - Credit Cards
+| http-methods:
+|   Supported Methods: GET HEAD POST PUT DELETE TRACE OPTIONS PATCH
+|_  Potentially risky methods: PUT DELETE TRACE PATCH
+|_clock-skew: -2s
+
+VULNERABILITIES: None detected in parsed output.
+
+OPERATING SYSTEM DETECTION:
+Aggressive OS guesses: Microsoft Windows Server 2012 R2 (92%), Microsoft Windows Server 2008 R2 or Windows 7 SP1 (89%), Microsoft Windows 7 or Windows Server 2008 R2 (85%); No exact OS matches for host (test conditions non-ideal).; Uptime guess: 212.537 days (since Fri Jun  6 23:03:48 2025)
+
+Raw Output (excerpt):
+Starting Nmap 7.98 ( https://nmap.org ) at 2026-01-05 11:56 +0500
+NSE: Loaded 158 scripts for scanning.
+NSE: Script Pre-scanning.
+Initiating NSE at 11:56
+Completed NSE at 11:56, 0.00s elapsed
+Initiating NSE at 11:56
+Completed NSE at 11:56, 0.00s elapsed
+Initiating NSE at 11:56
+Completed NSE at 11:56, 0.00s elapsed
+Initiating Parallel DNS resolution of 1 host. at 11:56
+Completed Parallel DNS resolution of 1 host. at 11:56, 0.50s elapsed
+Initiating Parallel DNS resolution of 1 host. at 11:56
+Completed Parallel DNS resolution of 1 host. at 11:56, 0.16s elapsed
+Initiating SYN Stealth Scan at 11:56
+Scanning zero.webappsecurity.com (54.82.22.214) [1000 ports]
+Discovered open port 8080/tcp on 54.82.22.214
+Discovered open port 443/tcp on 54.82.22.214
+Discovered open port 80/tcp on 54.82.22.214
+Completed SYN Stealth Scan at 11:56, 17.60s elapsed (1000 total ports)
+Initiating Service scan at 11:56
+Scanning 3 services on zero.webappsecurity.com (54.82.22.214)
+Completed Service scan at 11:57, 17.76s elapsed (3 services on 1 host)
+Initiating OS detection (try #1) against zero.webappsecurity.com (54.82.22.214)
+Retrying OS detection (try #2) against zero.webappsecurity.com (54.82.22.214)
+NSE: Script scanning 54.82.22.214.
+Initiating NSE at 11:57
+Completed NSE at 11:57, 15.42s elapsed
+Initiating NSE at 11:57
+Completed NSE at 11:57, 2.46s elapsed
+Initiating NSE at 11:57
+Completed NSE at 11:57, 0.00s elapsed
+Nmap scan report for zero.webappsecurity.com (54.82.22.214)
+Host is up (0.27s latency).
+rDNS record for 54.82.22.214: ec2-54-82-22-214.compute-1.amazonaws.com
+Not shown: 997 filtered tcp ports (no-response)
+PORT     STATE SERVICE    VERSION
+80/tcp   open  tcpwrapped
+| http-methods: 
+|   Supported Methods: GET HEAD POST PUT DELETE TRACE OPTIONS PATCH
+|_  Potentially risky methods: PUT DELETE TRACE PATCH
+|_http-title: Zero - Personal Banking - Loans - Credit Cards
+|_http-server-header: Apache-Coyote/1.1
+443/tcp  open  ssl/http   Apache httpd 2.2.6 ((Win32) mod_ssl/2.2.6 OpenSSL/0.9.8e mod_jk/1.2.40)
+| sslv2: 
+|   SSLv2 supported
+|   ciphers: 
+|     SSL2_DES_192_EDE3_CBC_WITH_MD5
+|     SSL2_RC2_128_CBC_EXPORT40_WITH_MD5
+|     SSL2_RC4_128_EXPORT40_WITH_MD5
+|     SSL2_DES_64_CBC_WITH_MD5
+|     SSL2_RC2_128_CBC_WITH_MD5
+|_    SSL2_RC4_128_WITH_MD5
+| ssl-cert: Subject: commonName=zero.webappsecurity.com/organizationName=Micro Focus LLC/stateOrProvinceName=California/countryName=US
+| Subject Alternative Name: DNS:zero.webappsecurity.com
+| Issuer: commonName=DigiCert TLS RSA SHA256 2020 CA1/organizationName=DigiCert Inc/countryName=US
+| Public Key type: rsa
+| Public Key bits: 2048
+| Signature Algorithm: sha256WithRSAEncryption
+| Not valid before: 2021-04-26T00:00:00
+| Not valid after:  2022-05-04T23:59:59
+| MD5:     a3c7 6d49 e492 0890 859a d111 889e 5d53
+| SHA-1:   38b7 1430 838e 0e8e 7d92 44a3 4610 5640 1ec8 ad0d
+|_SHA-256: b02a 9cda 2338 5967 209c e506 fea9 15a0 926b 4683 eb89 a81f 015b 8c31 2bb9 3cfd
+|_ssl-date: 2026-01-05T06:57:28+00:00; -2s from scanner time.
+| http-methods: 
+|   Supported Methods: GET HEAD POST OPTIONS TRACE
+|_  Potentially risky methods: TRACE
+|_http-server-header: Apache/2.2.6 (Win32) mod_ssl/2.2.6 OpenSSL/0.9.8e mod_jk/1.2.40
+|_http-title: Site doesn't have a title (text/html).
+8080/tcp open  tcpwrapped
+|_http-server-header: Apache-Coyote/1.1
+|_http-title: Zero - Personal Banking - Loans - Credit Cards
+| http-methods: 
+|   Supported Methods: GET HEAD POST PUT DELETE TRACE OPTIONS PATCH
+|_  Potentially risky methods: PUT DELETE TRACE PATCH
+Warning: OSScan results may be unreliable because we could not find at least 1 open and 1 closed port
+Device type: general purpose
+Running (JUST GUESSING): Microsoft Windows 2012|2008|7 (92%)
+OS CPE: cpe:/o:microsoft:windows_server_2012:r2 cpe:/o:microsoft:windows_server_2008:r2 cpe:/o:microsoft:windows_7
+Aggressive OS guesses: Microsoft Windows Server 2012 R2 (92%), Microsoft Windows Server 2008 R2 or Windows 7 SP1 (89%), Microsoft Windows 7 or Windows Server 2008 R2 (85%)
+No exact OS matches for host (test conditions non-ideal).
+Uptime guess: 212.537 days (since Fri Jun  6 23:03:48 2025)
+TCP Sequence Prediction: Difficulty=261 (Good luck!)
+IP ID Sequence Generation: Incremental
+
+Host script results:
+|_clock-skew: -2s
+
+NSE: Script Post-scanning.
+Initiating NSE at 11:57
+Completed NSE at 11:57, 0.00s elapsed
+Initiating NSE at 11:57
+Completed NSE at 11:57, 0.00s elapsed
+Initiating NSE at 11:57
+Completed NSE at 11:57, 0.00s elapsed
+Read data files from: /usr/share/nmap
+OS and Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+Nmap done: 1 IP address (1 host up) scanned in 59.99 seconds
+           Raw packets sent: 2092 (97.184KB) | Rcvd: 24 (1.256KB)
+
+
+
+======================================================================
+           END OF REPORT
+======================================================================
+
+Generated by WebShield Security Scanner
+Report ID:  695b60a061e3a97b32d2e979
+© 2026 WebShield
