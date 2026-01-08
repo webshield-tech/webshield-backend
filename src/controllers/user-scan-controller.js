@@ -138,26 +138,22 @@ export async function startScan(req, res) {
           validateHostname(hostname);
         }
 
-        // Build executable + args for each scan type
         switch (scanType) {
           case "nmap": {
-            const args = [
-              "-Pn",
-              "-T4",
-              "-sV",
-              "-sC",
-              "-O",
-              "-v",
-              "--top-ports",
-              "1000",
-              "--max-retries",
-              "1",
-              "--host-timeout",
-              "240s",
-              hostname,
-            ];
+          const args = [
+  "-Pn",
+  "-T4",
+  "-sV",
+  "-sC",
+  "-O",
+  "-v",
+  "--top-ports", "20",    
+  "--max-retries", "1",
+  "--host-timeout", "300s",
+  hostname,
+];
             await startProcess(scanId, "nmap", args, {
-              timeoutMs: 360000,
+              timeoutMs: 600000,
               maxRaw: 400000,
             });
             break;
