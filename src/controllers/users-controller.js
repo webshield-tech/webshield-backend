@@ -117,9 +117,10 @@ export async function loginUser(req, res) {
     res.cookie("token", result.token, {
       httpOnly: true,
       secure: false,
-      sameSite: "lax",
+      sameSite: "none",
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: "/",
+       domain: '.railway.app' 
     });
 
     console.log(" Login successful, cookie set for:", result.user.username);
@@ -200,7 +201,7 @@ export async function signupUser(req, res) {
     res.cookie("token", token, {
       httpOnly: true,
       secure: false,
-      sameSite: "lax",
+      sameSite: "none",
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: "/",
     });
