@@ -143,6 +143,7 @@ export async function startScan(req, res) {
           const args = [
   "-Pn",
   "-T4",
+  "-sT", 
   "-sV",
   "-sC",
   "-O",
