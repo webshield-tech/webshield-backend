@@ -175,14 +175,15 @@ export async function startScan(req, res) {
             await startProcess(scanId, "nikto", args, { timeoutMs: 180000 });
             break;
           }
-          case "ssl": {
-            const args = ["--no-colour", hostname];
-            await startProcess(scanId, "sslscan", args, {
-              timeoutMs: 0, // No timeout (dangerous!)
-              maxRaw: 10000,
-            });
-            break;
-          } // Make sure to test with URLs that have parameters
+        case "ssl": {
+  // Correct format: "hostname:443" as single argument
+  const args = ["--no-colour", "--timeout", "5", `${hostname}:443`];
+  await startProcess(scanId, "sslscan", args, {
+    timeoutMs: 30000,
+    maxRaw: 10000,
+  });
+  break;
+}
      case "sqlmap": {
   // If there is already a parameter, just scan as is.
   if (finalUrl.includes("?")) {

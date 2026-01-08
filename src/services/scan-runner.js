@@ -14,7 +14,7 @@ export async function startProcess(scanId, executable, args = [], opts = {}) {
   }
 
   const maxRaw = opts.maxRaw || 200_000;
-  const timeoutMs = opts.timeoutMs || 300_000;
+  const timeoutMs = opts.timeoutMs || 600000;
   const logIntervalMs = opts.logIntervalMs || 2000;
   const maxPartial = opts.maxPartial || 50_000;
 

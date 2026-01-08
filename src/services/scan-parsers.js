@@ -23,14 +23,18 @@ export function parseNmap(rawOutput = "", target = "") {
   const cveSet = new Set();
 
   for (const line of lines) {
-    // Open port lines like "22/tcp open  ssh"
-    if (/^\d+\/tcp\s+open/i.test(line)) {
-      openPorts.push(line);
-    } else if (/^\d+\/tcp\s+filtered/i.test(line)) {
-      filteredPorts.push(line);
-    } else if (/^\d+\/tcp\s+closed/i.test(line)) {
-      if (closedPorts.length < 20) closedPorts.push(line);
-    }
+if (/^\d+\/tcp\s+open/i.test(line)) {
+  openPorts.push(line);
+} else if (/Discovered open port (\d+\/tcp)/i.test(line)) {
+  const portMatch = line.match(/Discovered open port (\d+\/tcp) on/i);
+  if (portMatch) {
+    openPorts.push(portMatch[1] + " open (discovered)");
+  }
+} else if (/^\d+\/tcp\s+filtered/i.test(line)) {
+  filteredPorts.push(line);
+} else if (/^\d+\/tcp\s+closed/i.test(line)) {
+  if (closedPorts.length < 20) closedPorts.push(line);
+}
 
     // service/version lines may start with '|' or contain "Service Info"
     if (line.startsWith("|") && line.includes(":")) {
