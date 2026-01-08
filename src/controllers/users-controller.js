@@ -1,4 +1,4 @@
-import { checkUser,createUser } from "../models/users-model.js";
+import { verifyUser,createUser } from "../models/users-model.js";
 import { User } from "../models/users-mongoose.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
@@ -71,7 +71,7 @@ export async function loginUser(req, res) {
     console.log("Email/Username:", email || emailOrUsername);
 
     // Call checkUser
-    const result = await checkUser({
+    const result = await verifyUser({
       email: email || emailOrUsername,
       emailOrUsername: emailOrUsername || email,
       password,
