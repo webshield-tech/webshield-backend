@@ -1,5 +1,14 @@
 export function parseNmap(rawOutput = "", target = "") {
   const out = rawOutput || "";
+  // Check if scan was interrupted
+  if (out.includes("Scan terminated") || 
+      out.includes("Nmap done") && out.includes("scanned in")) {
+    // Scan completed normally
+    console.log("Nmap scan completed");
+  } else if (out.length < 500) {
+    // Very short output = likely interrupted
+    console.log("Nmap scan interrupted or timed out");
+  }
   const lines = out
     .split("\n")
     .map((l) => l.trim())
