@@ -103,31 +103,13 @@ export async function startProcess(scanId, executable, args = [], opts = {}) {
         const guessedTarget = procEntry?.args?.slice(-1)?.[0] || "";
         const parsed = parseByTool(executable, out || err, guessedTarget);
 
-        let status = "failed";
+        let status = "completed";
 
-        if (code === 0) {
-          status = "completed";
-        } else if (executable.includes("nikto")) {
-          if (
-            parsed.success ||
-            (parsed.scanStats && parsed.scanStats.scanCompleted) ||
-            (parsed.totalFindings && parsed.totalFindings > 0)
-          ) {
-            status = "completed";
-          }
-        } else if (executable.includes("nmap")) {
-          if (parsed.success || (parsed.openPorts && parsed.openPorts.length > 0)) {
-            status = "completed";
-          }
-        } else if (executable.includes("sqlmap")) {
-          if (parsed.success || parsed.vulnerable) {
-            status = "completed";
-          }
-        } else if (executable.includes("ssl")) {
-          if (parsed.success !== undefined) {
-            status = "completed";
-          }
-        }
+if ((out || err).trim().length > 0) {
+  status = "completed";
+} else {
+  status = "failed";
+}
 
         await Scan.findByIdAndUpdate(scanId, {
           status: status,
