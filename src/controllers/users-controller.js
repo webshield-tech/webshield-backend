@@ -1,4 +1,4 @@
-import { verifyUser,createUser } from "../models/users-model.js";
+import { verifyUser, createUser } from "../models/users-model.js";
 import { User } from "../models/users-mongoose.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
@@ -6,7 +6,6 @@ import jwt from "jsonwebtoken";
 // Add new user
 export async function addUser(user) {
   try {
-    // Check if user already exists
     const existingUser = await User.findOne({
       $or: [{ email: user.email }, { username: user.username }]
     });
@@ -19,10 +18,8 @@ export async function addUser(user) {
       };
     }
 
-    // Hash password
     const hashedPassword = await bcrypt.hash(user.password, 10);
-
-    // Create user
+    
     const newUser = await User.create({
       username: user.username,
       email: user.email,
@@ -32,7 +29,6 @@ export async function addUser(user) {
       usedScan: 0,
     });
 
-    // Generate JWT token 
     const token = jwt.sign(
       {
         username: newUser.username,
@@ -62,7 +58,7 @@ export async function addUser(user) {
   }
 }
 
-//  Login handler with cookie 
+// Login handler with cookie 
 export async function loginUser(req, res) {
   try {
     const { email, password, emailOrUsername } = req.body;
@@ -70,7 +66,7 @@ export async function loginUser(req, res) {
     console.log("=== LOGIN REQUEST ===");
     console.log("Email/Username:", email || emailOrUsername);
 
-    // Call checkUser
+    // ✅ FIXED: Call verifyUser function
     const result = await verifyUser({
       email: email || emailOrUsername,
       emailOrUsername: emailOrUsername || email,
@@ -85,26 +81,25 @@ export async function loginUser(req, res) {
       });
     }
 
-    // Set cookie with token
+    // ✅ FIXED: Change secure to true for Railway
     res.cookie("token", result.token, {
       httpOnly: true,
-      secure: false,
+      secure: true, // ← CHANGED FROM false TO true
       sameSite: "none",
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: "/",
-       domain: '.railway.app' 
+      domain: '.railway.app' 
     });
 
-    console.log(" Login successful, cookie set for:", result.user.username);
+    console.log("Login successful, cookie set for:", result.user.username);
 
-    // Send response without token (it's in cookie)
     res.json({
       success: true,
       message: result.message,
       user: result.user,
     });
   } catch (error) {
-    console.error(" Login error:", error);
+    console.error("Login error:", error);
     res.status(500).json({
       success: false,
       error: "Login failed",
@@ -112,7 +107,7 @@ export async function loginUser(req, res) {
   }
 }
 
-//  Signup handler with cookie setting
+// Signup handler with cookie setting
 export async function signupUser(req, res) {
   try {
     const { username, email, password } = req.body;
@@ -121,7 +116,6 @@ export async function signupUser(req, res) {
     console.log("Username:", username);
     console.log("Email:", email);
 
-    // Validate input
     if (!username || !email || !password) {
       return res.status(400).json({
         success: false,
@@ -129,7 +123,6 @@ export async function signupUser(req, res) {
       });
     }
 
-    // Check if user already exists
     const existingUser = await User.findOne({
       $or: [{ email }, { username }],
     });
@@ -137,27 +130,23 @@ export async function signupUser(req, res) {
     if (existingUser) {
       return res.status(409).json({
         success: false,
-        error:
-          existingUser.email === email
-            ? "Email already registered"
-            : "Username already taken",
+        error: existingUser.email === email
+          ? "Email already registered"
+          : "Username already taken",
       });
     }
 
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Create user
+    
     const newUser = await createUser({
-  username,
-  email,
-  password: hashedPassword,
-  role: "user",
-  scanLimit: 10,
-  usedScan: 0,
-});
+      username,
+      email,
+      password: hashedPassword,
+      role: "user",
+      scanLimit: 10,
+      usedScan: 0,
+    });
 
-    // Generate token
     const token = jwt.sign(
       {
         username: newUser.username,
@@ -169,13 +158,14 @@ export async function signupUser(req, res) {
       { expiresIn: "7d" }
     );
 
-    // Set cookie
+    // ✅ FIXED: Change secure to true
     res.cookie("token", token, {
       httpOnly: true,
-      secure: false,
+      secure: true, // ← CHANGED FROM false TO true
       sameSite: "none",
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: "/",
+      domain: '.railway.app' // ← ADDED domain
     });
 
     console.log("Signup successful, cookie set for:", newUser.username);
@@ -194,24 +184,26 @@ export async function signupUser(req, res) {
       },
     });
   } catch (error) {
-    console.error(" Signup error:", error);
+    console.error("Signup error:", error);
     res.status(500).json({
       success: false,
       error: "Signup failed",
     });
   }
 }
+
 // Logout handler
 export async function logoutUser(req, res) {
   try {
     console.log("LOGOUT REQUEST");
 
-    // Clear cookie
+    // ✅ FIXED: Typo "nane" → "none" and secure: true
     res.clearCookie("token", {
       httpOnly: true,
-      secure: false,
-      sameSite: "nane",
+      secure: true,
+      sameSite: "none", // ← FIXED TYPO
       path: "/",
+      domain: '.railway.app' // ← ADDED
     });
 
     console.log("Logout successful");

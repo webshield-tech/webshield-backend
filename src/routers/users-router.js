@@ -3,7 +3,7 @@ import {
   loginValidation,
   signUpValidation,
 } from "../utils/validations/user-validation.js";
-import { checkUser, addUser } from "../controllers/users-controller.js";
+import { loginUser, signupUser, addUser } from "../controllers/users-controller.js";
 import { checkAuth } from "../middlewares/user-auth.js";
 import { User } from "../models/users-mongoose.js";
 import dotenv from "dotenv";
@@ -12,106 +12,11 @@ dotenv.config();
 
 const userRouter = express.Router();
 
-// SIGNUP ROUTE
-userRouter.post("/signup", signUpValidation, async (req, res) => {
-  try {
-    const user = req.body;
+// ✅ FIXED: Use signupUser function
+userRouter.post("/signup", signUpValidation, signupUser);
 
-    console.log("=== SIGNUP REQUEST ===");
-    console.log("Username:", user.username);
-    console.log("Email:", user.email);
-
-    const response = await addUser(user);
-
-    // Check if signup failed
-    if (response.error) {
-      console.log("Signup failed:", response.error);
-      return res.status(400).json({
-        success: false,
-        error: response.error,
-      });
-    }
-
-    console.log("Signup successful for:", response.username);
-
-    res.status(201).json({
-      success: true,
-      message: "Account created successfully",
-      data: {
-        username: response.username,
-        email: response.email,
-      },
-    });
-  } catch (error) {
-    console.error("Signup error:", error.message);
-    res.status(500).json({
-      success: false,
-      error: "Failed to create account",
-    });
-  }
-});
-
-// LOGIN ROUTE
-userRouter.post("/login", loginValidation, loginLimiter, async (req, res) => {
-  try {
-    const user = req.body;
-
-    console.log("=== LOGIN REQUEST ===");
-    console.log("Email/Username:", user.email || user.emailOrUsername);
-    console.log("Request origin:", req.headers.origin);
-    console.log("Request host:", req.headers.host);
-
-    const response = await checkUser(user);
-
-    if (!response.success || response.error) {
-      console.log("Login failed:", response.error);
-      return res.status(401).json({
-        success: false,
-        error: response.error,
-      });
-    }
-
-    const cookieOptions = {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'none', 
-      partitioned: true,
-      maxAge: 7 * 24 * 60 * 60 * 1000, 
-      path: "/",
-       domain: '.railway.app',
-    };
-
-    res.cookie("token", response.token, cookieOptions);
-
-    console.log("Login successful");
-    console.log(
-      " Cookie set:",
-      "token=" + response.token.substring(0, 20) + "..."
-    );
-    console.log(" Cookie options:", JSON.stringify(cookieOptions));
-    console.log(" Origin:", req.headers.origin);
-
-    res.json({
-      success: true,
-      message: "Logged in successfully",
-      user: {
-        _id: response.user._id || response.user.userId,
-        userId: response.user.userId || response.user._id,
-        username: response.user.username,
-        email: response.user.email,
-        role: response.user.role,
-        scanLimit: response.user.scanLimit,
-        usedScan: response.user.usedScan || 0,
-      },
-    });
-  } catch (error) {
-    console.error("Login error:", error.message);
-    res.status(500).json({
-      success: false,
-      error: "Login failed",
-    });
-  }
-});
+// ✅ FIXED: Use loginUser function
+userRouter.post("/login", loginValidation, loginLimiter, loginUser);
 
 // GET USER PROFILE
 userRouter.get('/profile', checkAuth, async (req, res) => {
@@ -181,18 +86,15 @@ userRouter.post("/accept-terms", checkAuth, async (req, res) => {
   try {
     const userId = req.userId;
 
-    // Get user's IP
-    const userIP =
-      req.headers["x-forwarded-for"] || req.connection.remoteAddress;
+    const userIP = req.headers["x-forwarded-for"] || req.connection.remoteAddress;
 
-    // Update user
     await User.findByIdAndUpdate(userId, {
       agreedToTerms: true,
       termsAcceptedAt: new Date(),
       termsAcceptedIP: userIP,
     });
 
-    console.log(` User ${userId} accepted terms from IP ${userIP}`);
+    console.log(`User ${userId} accepted terms from IP ${userIP}`);
 
     res.json({
       success: true,
