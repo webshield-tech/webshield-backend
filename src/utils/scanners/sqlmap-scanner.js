@@ -1,11 +1,9 @@
-
-
 import { spawn } from "child_process";
 
 function ensureTestUrl(url) {
   // If no query params, add one for testing
   if (url.includes("?")) return url;
-  return url.replace(/\/$/, "") + "/?id=1";
+  return url.replace(/\/+$/, "") + "?id=1";
 }
 
 export async function scanWithSqlmap(targetUrl) {
@@ -66,7 +64,7 @@ export async function scanWithSqlmap(targetUrl) {
           success: false,
           error: err.message,
           rawOutput: stderr || stdout,
-          target: testUrl,
+          target: testUrl, // <--- Always use testUrl
         });
       });
 
@@ -83,12 +81,19 @@ export async function scanWithSqlmap(targetUrl) {
 
         lines.forEach((line) => {
           const low = line.toLowerCase();
-          if (low.includes("is injectable") || /parameter.*injectable/i.test(line) || low.includes("payload:")) {
+          if (
+            low.includes("is injectable") ||
+            /parameter.*injectable/i.test(line) ||
+            low.includes("payload:")
+          ) {
             vulnerabilities.push(line);
             vulnerable = true;
           }
 
-          if (low.includes("does not seem to be injectable") || low.includes("not injectable")) {
+          if (
+            low.includes("does not seem to be injectable") ||
+            low.includes("not injectable")
+          ) {
             warnings.push(line);
           }
 
@@ -100,7 +105,10 @@ export async function scanWithSqlmap(targetUrl) {
             tables.push(line);
           }
 
-          if (line.toLowerCase().includes("parameter:") || line.toLowerCase().includes("injection point")) {
+          if (
+            line.toLowerCase().includes("parameter:") ||
+            line.toLowerCase().includes("injection point")
+          ) {
             injectionPoints.push(line);
           }
         });
@@ -123,7 +131,7 @@ export async function scanWithSqlmap(targetUrl) {
           tables,
           injectionPoints,
           details: {
-            testedUrl: testUrl,
+            testedUrl: testUrl, // <--- Always use testUrl
             dbms,
             payload,
             findingsCount: vulnerabilities.length,
@@ -131,8 +139,10 @@ export async function scanWithSqlmap(targetUrl) {
             tablesFound: tables.length,
           },
           rawOutput: stdout,
-          target: testUrl,
-          summary: vulnerable ? `SQL injection detected (DB: ${dbms || "unknown"})` : "No SQL injection detected",
+          target: testUrl, // <--- Always use testUrl
+          summary: vulnerable
+            ? `SQL injection detected (DB: ${dbms || "unknown"})`
+            : "No SQL injection detected",
         });
       });
     });
@@ -148,7 +158,7 @@ export async function scanWithSqlmap(targetUrl) {
       tables: [],
       injectionPoints: [],
       rawOutput: "",
-      target: targetUrl,
+      target: targetUrl, // <--- Always use targetUrl if errored
     };
   }
 }

@@ -186,30 +186,58 @@ export async function startScan(req, res) {
             });
             break;
           } // Make sure to test with URLs that have parameters
-          case "sqlmap": {
-            let sqlmapUrl = finalUrl;
-            if (!sqlmapUrl.includes("?")) {
-              // Add a test parameter for vulnerable sites
-              sqlmapUrl += "?id=1";
-            }
+     case "sqlmap": {
+  // If there is already a parameter, just scan as is.
+  if (finalUrl.includes("?")) {
+    const args = [
+      "-u",
+      finalUrl,
+      "--batch",
+      "--smart",
+      "--level", "5",
+      "--risk", "3",
+      "--threads", "3",
+      "--forms",
+      "--crawl", "3",
+      "--no-cast",
+      "--disable-coloring",
+    ];
+    await startProcess(scanId, "sqlmap", args, { timeoutMs: 185000 });
+    break;
+  }
 
-            const args = [
-              "-u",
-              sqlmapUrl,
-              "--batch",
-              "--smart",
-              "--level",
-              "1",
-              "--risk",
-              "1",
-              "--threads",
-              "1",
-              "--no-cast",
-              "--disable-coloring",
-            ];
-            await startProcess(scanId, "sqlmap", args, { timeoutMs: 185000 });
-            break;
-          }
+  // If no parameter, try common parameter names!
+  const commonParams = [
+    "id", "userid", "user", "cat", "category", "pid", "prod", "product",
+    "page", "q", "search", "type", "item", "order"
+  ];
+
+  // Schedule scans for each param, plus the original url with --crawl/forms
+  for (const param of commonParams) {
+    const guessedUrl = finalUrl.replace(/\/+$/, "") + `?${param}=1`;
+    const args = [
+      "-u",
+      guessedUrl,
+      "--batch",
+      "--smart",
+      "--level", "5",
+      "--risk", "3",
+      "--threads", "3",
+      "--forms",
+      "--crawl", "3",
+      "--no-cast",
+      "--disable-coloring",
+    ];
+    // You may want to record (or merge) the scan results!
+    // For demo: await startProcess for first param only, or queue/merge results as desired.
+    await startProcess(scanId, "sqlmap", args, { timeoutMs: 185000 });
+    // BREAK after first for demo, or let it scan all params: remove break for advanced use.
+    break;
+  }
+
+  // Also scan the base with crawl/forms as fallback (already included in args above!)
+  break;
+}
           default: {
             // should not happen
             await Scan.findByIdAndUpdate(scanId, {
