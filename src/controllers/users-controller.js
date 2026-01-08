@@ -1,4 +1,4 @@
-import { createUser } from "../models/users-model.js";
+import { checkUser,createUser } from "../models/users-model.js";
 import { User } from "../models/users-mongoose.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
