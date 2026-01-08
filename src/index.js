@@ -12,16 +12,36 @@ dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 4000;
+// Replace your current CORS setup with this:
+// CORRECT CORS configuration:
+const allowedOrigins = [
+  'http://localhost:5173', // Local development
+  'https://webshield.tech', // Your custom domain
+  'https://www.webshield.tech', // WWW version
+  'https://webshield-frontend.vercel.app', // Vercel URL
+  process.env.FRONTEND_URL // Keep for env variable
+].filter(Boolean); // Remove any undefined values
 
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL,
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like mobile apps or curl)
+      if (!origin) return callback(null, true);
+      
+      if (allowedOrigins.includes(origin)) {
+        callback(null, origin); // ← CRITICAL: Return the ORIGIN, not true
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "Cookie"],
   })
 );
 
+// Also add OPTIONS handler for preflight
+app.options('*', cors()); // Enable preflight for all routes
 app.use(cookieParser());
 
 app.use(express.json({ limit: "1mb" }));
