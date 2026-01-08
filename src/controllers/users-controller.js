@@ -6,87 +6,59 @@ import jwt from "jsonwebtoken";
 // Add new user
 export async function addUser(user) {
   try {
-    const result = await createUser(user);
-    return result;
-  } catch (error) {
-    return { error: error.message };
-  }
-}
-
-// Check user credentials
-export async function checkUser(user) {
-  try {
-    // Accept both "email" and "emailOrUsername"
-    const identifier = user.emailOrUsername || user.email || user.username;
-    const password = user.password;
-
-    if (!identifier) {
-      return {
-        success: false,
-        error: "Email or username is required",
-      };
-    }
-
-    if (!password) {
-      return {
-        success: false,
-        error: "Password is required",
-      };
-    }
-
-    const userExists = await User.findOne({
-      $or: [{ email: identifier }, { username: identifier }],
+    // Check if user already exists
+    const existingUser = await User.findOne({
+      $or: [{ email: user.email }, { username: user.username }]
     });
 
-    if (!userExists) {
+    if (existingUser) {
       return {
-        success: false,
-        error: "User does not exist",
+        error: existingUser.email === user.email
+          ? "Email already registered"
+          : "Username already taken"
       };
     }
 
-    // Compare password
-    const isPasswordValid = await bcrypt.compare(password, userExists.password);
+    // Hash password
+    const hashedPassword = await bcrypt.hash(user.password, 10);
 
-    if (!isPasswordValid) {
-      return {
-        success: false,
-        error: "Your password is incorrect",
-      };
-    }
+    // Create user
+    const newUser = await User.create({
+      username: user.username,
+      email: user.email,
+      password: hashedPassword,
+      role: "user",
+      scanLimit: 10,
+      usedScan: 0,
+    });
 
-    // Generate JWT token
+    // Generate JWT token 
     const token = jwt.sign(
       {
-        username: userExists.username,
-        email: userExists.email,
-        role: userExists.role,
-        userId: userExists._id,
+        username: newUser.username,
+        email: newUser.email,
+        role: newUser.role,
+        userId: newUser._id,
       },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
 
     return {
-      success: true,
-      message: "You are logged in",
+      username: newUser.username,
+      email: newUser.email,
       token: token,
       user: {
-        _id: userExists._id,
-        userId: userExists._id,
-        username: userExists.username,
-        email: userExists.email,
-        role: userExists.role,
-        scanLimit: userExists.scanLimit,
-        usedScan: userExists.scanUsed || 0,
-      },
+        _id: newUser._id,
+        username: newUser.username,
+        email: newUser.email,
+        role: newUser.role,
+        scanLimit: newUser.scanLimit,
+        usedScan: 0,
+      }
     };
   } catch (error) {
-    console.error("Error verifying user:", error);
-    return {
-      success: false,
-      error: "Internal server error during verification",
-    };
+    return { error: error.message };
   }
 }
 
