@@ -75,8 +75,7 @@ export function parseNmap(rawOutput = "", target = "") {
 
   return {
     tool: "nmap",
-    success:
-      openPorts.length > 0 || cveList.length > 0 || vulnerabilities.length > 0,
+       success: rawOutput.length > 0,
     openPorts,
     totalPorts: openPorts.length,
     filteredPorts,
@@ -316,7 +315,7 @@ export function parseSsl(rawOutput = "", target = "") {
 
   // FIXED: If no issues found, success = true
   // If issues found, success = false (because SSL has problems)
-  const success = allIssues.length === 0;
+ const success = rawOutput.length > 0; 
 
   return {
     tool: "ssl",
