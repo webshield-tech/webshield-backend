@@ -10,8 +10,6 @@ import dotenv from "dotenv";
 import { loginLimiter } from "../middlewares/rate-limiter.js";
 dotenv.config();
 
-
-
 const userRouter = express.Router();
 
 // SIGNUP ROUTE
@@ -54,7 +52,7 @@ userRouter.post("/signup", signUpValidation, async (req, res) => {
 });
 
 // LOGIN ROUTE
-userRouter.post("/login", loginValidation,loginLimiter, async (req, res) => {
+userRouter.post("/login", loginValidation, loginLimiter, async (req, res) => {
   try {
     const user = req.body;
 
@@ -73,14 +71,15 @@ userRouter.post("/login", loginValidation,loginLimiter, async (req, res) => {
       });
     }
 
-const isProduction = process.env.NODE_ENV === 'production';
-const cookieOptions = {
-  httpOnly: true,
-  secure: isProduction, 
-  sameSite: isProduction ? 'strict' : 'lax', 
-  maxAge: 7 * 24 * 60 * 60 * 1000,
-  path: "/",
-};
+    // ✅ FIXED: Always use 'none' for cross-domain (Vercel + Railway)
+    const cookieOptions = {
+      httpOnly: true,
+      secure: true, // ALWAYS true for Railway/Vercel (HTTPS only)
+      sameSite: 'none', // REQUIRED for cross-domain cookies
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      path: "/",
+    };
+
     res.cookie("token", response.token, cookieOptions);
 
     console.log("Login successful");
@@ -89,6 +88,7 @@ const cookieOptions = {
       "token=" + response.token.substring(0, 20) + "..."
     );
     console.log(" Cookie options:", JSON.stringify(cookieOptions));
+    console.log(" Origin:", req.headers.origin);
 
     res.json({
       success: true,
@@ -131,20 +131,20 @@ userRouter.get('/profile', checkAuth, async (req, res) => {
       user: {
         _id: user._id,
         userId: user._id,
-        username: user. username,
-        email: user. email,
-        role: user. role,
+        username: user.username,
+        email: user.email,
+        role: user.role,
         scanLimit: user.scanLimit,
         usedScan: user.usedScan,
         agreedToTerms: user.agreedToTerms || false,  
-        createdAt: user. createdAt
+        createdAt: user.createdAt
       }
     });
   } catch (error) {
     console.error('Get profile error:', error);
     res.status(500).json({
       success: false,
-      error:  'Failed to get profile'
+      error: 'Failed to get profile'
     });
   }
 });
@@ -154,14 +154,13 @@ userRouter.post('/logout', async (req, res) => {
   try {
     console.log('[Logout] Clearing cookie');
     
-    
-   const isProduction = process.env.NODE_ENV === 'production';
-res.clearCookie('token', {
-  httpOnly: true,
-  secure: isProduction,
-  sameSite: isProduction ? 'strict' : 'lax',
-  path: '/',
-});
+    // ✅ FIXED: Same cookie options as login
+    res.clearCookie('token', {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+      path: '/',
+    });
 
     res.json({
       success: true,
@@ -175,6 +174,7 @@ res.clearCookie('token', {
     });
   }
 });
+
 // Accept terms route
 userRouter.post("/accept-terms", checkAuth, async (req, res) => {
   try {
