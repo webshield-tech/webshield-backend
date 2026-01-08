@@ -1,6 +1,5 @@
 import { verifyUser, createUser } from "../models/users-model.js";
 import { User } from "../models/users-mongoose.js";
-import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 
 // Add new user
@@ -18,12 +17,11 @@ export async function addUser(user) {
       };
     }
 
-    const hashedPassword = await bcrypt.hash(user.password, 10);
-    
-    const newUser = await User.create({
+    // ✅ REMOVED: Don't hash here, createUser will hash
+    const newUser = await createUser({
       username: user.username,
       email: user.email,
-      password: hashedPassword,
+      password: user.password,  // ← Plain password
       role: "user",
       scanLimit: 10,
       usedScan: 0,
@@ -65,8 +63,8 @@ export async function loginUser(req, res) {
 
     console.log("=== LOGIN REQUEST ===");
     console.log("Email/Username:", email || emailOrUsername);
+    console.log("Password length:", password ? password.length : "missing");
 
-    // ✅ FIXED: Call verifyUser function
     const result = await verifyUser({
       email: email || emailOrUsername,
       emailOrUsername: emailOrUsername || email,
@@ -81,17 +79,16 @@ export async function loginUser(req, res) {
       });
     }
 
-    // ✅ FIXED: Change secure to true for Railway
     res.cookie("token", result.token, {
       httpOnly: true,
-      secure: true, // ← CHANGED FROM false TO true
+      secure: true,
       sameSite: "none",
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: "/",
       domain: '.railway.app' 
     });
 
-    console.log("Login successful, cookie set for:", result.user.username);
+    console.log("✅ Login successful, cookie set for:", result.user.username);
 
     res.json({
       success: true,
@@ -115,6 +112,7 @@ export async function signupUser(req, res) {
     console.log("=== SIGNUP REQUEST ===");
     console.log("Username:", username);
     console.log("Email:", email);
+    console.log("Password length:", password ? password.length : "missing");
 
     if (!username || !email || !password) {
       return res.status(400).json({
@@ -136,12 +134,13 @@ export async function signupUser(req, res) {
       });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // ✅ REMOVED: No hashing here!
+    // const hashedPassword = await bcrypt.hash(password, 10); ← DELETE THIS LINE
     
     const newUser = await createUser({
       username,
       email,
-      password: hashedPassword,
+      password: password,  // ← Plain password! createUser will hash it
       role: "user",
       scanLimit: 10,
       usedScan: 0,
@@ -158,17 +157,16 @@ export async function signupUser(req, res) {
       { expiresIn: "7d" }
     );
 
-    // ✅ FIXED: Change secure to true
     res.cookie("token", token, {
       httpOnly: true,
-      secure: true, // ← CHANGED FROM false TO true
+      secure: true,
       sameSite: "none",
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: "/",
-      domain: '.railway.app' // ← ADDED domain
+      domain: '.railway.app'
     });
 
-    console.log("Signup successful, cookie set for:", newUser.username);
+    console.log("✅ Signup successful, cookie set for:", newUser.username);
 
     res.status(201).json({
       success: true,
@@ -184,10 +182,10 @@ export async function signupUser(req, res) {
       },
     });
   } catch (error) {
-    console.error("Signup error:", error);
+    console.error("Signup error:", error.message);
     res.status(500).json({
       success: false,
-      error: "Signup failed",
+      error: "Signup failed: " + error.message,
     });
   }
 }
@@ -197,13 +195,12 @@ export async function logoutUser(req, res) {
   try {
     console.log("LOGOUT REQUEST");
 
-    // ✅ FIXED: Typo "nane" → "none" and secure: true
     res.clearCookie("token", {
       httpOnly: true,
       secure: true,
-      sameSite: "none", // ← FIXED TYPO
+      sameSite: "none",
       path: "/",
-      domain: '.railway.app' // ← ADDED
+      domain: '.railway.app'
     });
 
     console.log("Logout successful");
