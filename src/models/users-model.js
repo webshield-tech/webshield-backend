@@ -43,7 +43,7 @@ export async function createUser(user) {
 }
 
 // Optionally keep verifyUser here (no change) or move to controller as needed
-export async function verifyUser(user) {
+export async function checkUser(user) {
   try {
     const identifier = user.emailOrUsername;
     const password = user.password;
