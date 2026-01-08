@@ -3,11 +3,13 @@ FROM node:18-alpine
 RUN apk add --no-cache \
     nmap \
     nikto \
-    sqlmap \
     sslscan \
     curl \
     python3 \
-    py3-pip
+    py3-pip \
+    git
+
+RUN pip3 install sqlmap
 
 WORKDIR /app
 
