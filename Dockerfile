@@ -1,15 +1,17 @@
-FROM node:18-alpine
+FROM ubuntu:22.04
 
-RUN apk add --no-cache \
+# Install Node.js and tools
+RUN apt-get update && apt-get install -y \
+    nodejs \
+    npm \
     nmap \
     nikto \
+    sqlmap \
     sslscan \
     curl \
     python3 \
-    py3-pip \
-    git
-
-RUN pip3 install sqlmap
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
