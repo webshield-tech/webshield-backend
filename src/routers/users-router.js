@@ -71,13 +71,14 @@ userRouter.post("/login", loginValidation, loginLimiter, async (req, res) => {
       });
     }
 
-    // ✅ FIXED: Always use 'none' for cross-domain (Vercel + Railway)
     const cookieOptions = {
       httpOnly: true,
-      secure: true, // ALWAYS true for Railway/Vercel (HTTPS only)
-      sameSite: 'none', // REQUIRED for cross-domain cookies
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      secure: true,
+      sameSite: 'none', 
+      partitioned: true,
+      maxAge: 7 * 24 * 60 * 60 * 1000, 
       path: "/",
+       domain: '.railway.app',
     };
 
     res.cookie("token", response.token, cookieOptions);
@@ -154,12 +155,12 @@ userRouter.post('/logout', async (req, res) => {
   try {
     console.log('[Logout] Clearing cookie');
     
-    // ✅ FIXED: Same cookie options as login
     res.clearCookie('token', {
       httpOnly: true,
       secure: true,
       sameSite: 'none',
       path: '/',
+      domain: '.railway.app',
     });
 
     res.json({

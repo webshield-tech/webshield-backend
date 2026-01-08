@@ -15,7 +15,12 @@ import {
 const scanRouter = express.Router();
 scanRouter.use(checkAuth);
 
-scanRouter.post('/start', startScan);
+scanRouter.post('/start', async (req, res, next) => {
+  console.log('=== SCAN START ===');
+  console.log('User ID:', req.userId);
+  console.log('Cookies:', req.cookies);
+  next();
+}, startScan);
 scanRouter.get('/history', getScanHistory);
 scanRouter.get('/:id', getScanResultsById);
 scanRouter.post('/:id/cancel', cancelScan);
