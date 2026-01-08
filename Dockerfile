@@ -1,8 +1,7 @@
-FROM ubuntu:22.04
+FROM node:18
 
+# Install security tools
 RUN apt-get update && apt-get install -y \
-    nodejs \
-    npm \
     nmap \
     nikto \
     sqlmap \
@@ -21,5 +20,4 @@ COPY . .
 
 EXPOSE 4000
 
-# Run from src folder
 CMD ["node", "src/index.js"]
