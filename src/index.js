@@ -12,29 +12,27 @@ dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 4000;
+app.set('trust proxy', 1);
 
-// FIXED CORS configuration:
+
+// CORS configuration:
 const allowedOrigins = [
-  'http://localhost:5173', // Local development
-  'https://webshield.tech', // Your custom domain
-  'https://www.webshield.tech', // WWW version
-  'https://webshield-frontend.vercel.app', // Vercel URL
-  process.env.FRONTEND_URL // Keep for env variable
-].filter(Boolean); // Remove any undefined values
+  'http://localhost:5173', 
+  'https://webshield.tech', 
+  'https://www.webshield.tech', 
+  'https://webshield-frontend.vercel.app', 
+  process.env.FRONTEND_URL 
+].filter(Boolean); 
 
 app.use(
   cors({
     origin: function (origin, callback) {
-      // Allow requests with no origin (like mobile apps, curl, or server-to-server)
       if (!origin) {
         return callback(null, true);
       }
-      
-      // Check if origin is in allowed list
       if (allowedOrigins.includes(origin)) {
-        return callback(null, true); // FIXED: Return true, not origin
+        return callback(null, true); 
       } else {
-        // Log blocked origins for debugging
         console.log('CORS blocked origin:', origin);
         return callback(new Error('Not allowed by CORS'), false);
       }
