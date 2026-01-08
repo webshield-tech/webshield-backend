@@ -20,11 +20,9 @@ export async function createUser(user) {
       }
     }
 
-    // Use async bcrypt methods (non-blocking)
     const salt = await bcrypt.genSalt(10);
     const hashedPass = await bcrypt.hash(user.password, salt);
 
-    // Create a Mongoose model instance (do NOT call createUser recursively)
     const newUser = new User({
       username: user.username,
       email: user.email,
@@ -42,7 +40,6 @@ export async function createUser(user) {
   }
 }
 
-// Optionally keep verifyUser here (no change) or move to controller as needed
 export async function verifyUser(user) {
   try {
     const identifier = user.emailOrUsername;
@@ -58,7 +55,6 @@ export async function verifyUser(user) {
       };
     }
 
-    // COMPARING PASSWORD
     const isPasswordValid = await bcrypt.compare(password, userExists.password);
 
     if (isPasswordValid) {
@@ -77,8 +73,14 @@ export async function verifyUser(user) {
         message: "You are logged in",
         token: token,
         user: {
+          // ✅ COMPLETE USER DATA:
+          _id: userExists._id,
+          userId: userExists._id,
           username: userExists.username,
           email: userExists.email,
+          role: userExists.role,
+          scanLimit: userExists.scanLimit,
+          usedScan: userExists.usedScan || 0,
         },
       };
     } else {
