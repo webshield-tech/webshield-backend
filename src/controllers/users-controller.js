@@ -16,12 +16,11 @@ export async function addUser(user) {
           : "Username already taken"
       };
     }
-
-    // ✅ REMOVED: Don't hash here, createUser will hash
+    
     const newUser = await createUser({
       username: user.username,
       email: user.email,
-      password: user.password,  // ← Plain password
+      password: user.password,  // ✅ Plain password - createUser hashes it
       role: "user",
       scanLimit: 10,
       usedScan: 0,
@@ -85,10 +84,11 @@ export async function loginUser(req, res) {
       sameSite: "none",
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: "/",
-      domain: '.railway.app' 
+      // ✅ NO domain setting
     });
 
-    console.log("✅ Login successful, cookie set for:", result.user.username);
+    console.log("✅ Login successful for:", result.user.username);
+    console.log("✅ User ID in token:", result.user._id);
 
     res.json({
       success: true,
@@ -134,24 +134,24 @@ export async function signupUser(req, res) {
       });
     }
 
-    // ✅ REMOVED: No hashing here!
-    // const hashedPassword = await bcrypt.hash(password, 10); ← DELETE THIS LINE
-    
+    // ✅ Password is plain here - createUser will hash it
     const newUser = await createUser({
       username,
       email,
-      password: password,  // ← Plain password! createUser will hash it
+      password: password,
       role: "user",
       scanLimit: 10,
       usedScan: 0,
     });
+
+    console.log("✅ User created with ID:", newUser._id);
 
     const token = jwt.sign(
       {
         username: newUser.username,
         email: newUser.email,
         role: newUser.role,
-        userId: newUser._id,
+        userId: newUser._id,  // ✅ This should be new user's ID
       },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
@@ -163,10 +163,11 @@ export async function signupUser(req, res) {
       sameSite: "none",
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: "/",
-      domain: '.railway.app'
+      // ✅ NO domain setting - REMOVED!
     });
 
-    console.log("✅ Signup successful, cookie set for:", newUser.username);
+    console.log("✅ Signup successful for:", newUser.username);
+    console.log("✅ Token generated with user ID:", newUser._id);
 
     res.status(201).json({
       success: true,
@@ -200,7 +201,7 @@ export async function logoutUser(req, res) {
       secure: true,
       sameSite: "none",
       path: "/",
-      domain: '.railway.app'
+      // ✅ NO domain setting - REMOVED!
     });
 
     console.log("Logout successful");
@@ -224,18 +225,19 @@ export async function getUserProfile(req, res) {
     const userId = req.user.userId;
 
     console.log("=== GET PROFILE REQUEST ===");
-    console.log("User ID:", userId);
+    console.log("User ID from token:", userId);
 
     const user = await User.findById(userId).select("-password");
 
     if (!user) {
+      console.log("❌ User not found for ID:", userId);
       return res.status(404).json({
         success: false,
         error: "User not found",
       });
     }
 
-    console.log("Profile fetched for:", user.username);
+    console.log("✅ Profile fetched for:", user.username);
 
     res.json({
       success: true,
