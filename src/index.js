@@ -16,40 +16,59 @@ app.set('trust proxy', 1);
 
 
 // CORS configuration:
+// CORS configuration
 const allowedOrigins = [
   'http://localhost:5173', 
   'https://webshield.tech', 
   'https://www.webshield.tech', 
-  'https://webshield-frontend.vercel.app', 
+  'https://webshield-frontend.vercel.app',
   process.env.FRONTEND_URL 
-].filter(Boolean); 
+].filter(Boolean);
 
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      if (!origin) {
-        return callback(null, true);
-      }
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true); 
-      } else {
-        console.log('CORS blocked origin:', origin);
-        return callback(new Error('Not allowed by CORS'), false);
-      }
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "Cookie"],
-  })
-);
+// Remove the existing CORS configuration and replace with this:
 
-// app.options('/*', (req, res) => {
-//   res.setHeader('Access-Control-Allow-Origin', req.headers.origin || allowedOrigins[0]);
-//   res.setHeader('Access-Control-Allow-Credentials', 'true');
-//   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-//   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cookie');
-//   res.sendStatus(200);
-// });
+// Handle preflight requests first
+app.options('*', cors({
+  origin: allowedOrigins,
+  credentials: true,
+  optionsSuccessStatus: 200
+}));
+
+// Main CORS middleware
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl requests)
+    if (!origin) {
+      console.log('No origin header - allowing request');
+      return callback(null, true);
+    }
+    
+    // Check if origin is in allowed origins
+    if (allowedOrigins.includes(origin)) {
+      console.log('Origin allowed:', origin);
+      return callback(null, true);
+    }
+    
+    // Allow all vercel.app subdomains (for preview deployments)
+    if (origin.includes('.vercel.app')) {
+      console.log('Vercel preview allowed:', origin);
+      return callback(null, true);
+    }
+    
+    // Allow all railway.app subdomains (for backend)
+    if (origin.includes('.railway.app')) {
+      console.log('Railway allowed:', origin);
+      return callback(null, true);
+    }
+    
+    console.log('CORS blocked origin:', origin);
+    return callback(new Error('Not allowed by CORS'), false);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'X-Requested-With'],
+  exposedHeaders: ['Set-Cookie']
+}));
 
 app.use(cookieParser());
 app.use(express.json({ limit: "1mb" }));
@@ -67,6 +86,22 @@ app.use("/admin", adminRouter);
 // Health check route
 app.get("/", (req, res) => {
   res.json({ message: "WebShield Backend server is running" });
+});
+// After your routes but before 404 handler, add:
+app.get("/api/health", (req, res) => {
+  res.json({ 
+    status: "ok", 
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
+app.get("/health", (req, res) => {
+  res.json({ 
+    status: "ok", 
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development'
+  });
 });
 
 // 404 handler
