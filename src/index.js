@@ -14,8 +14,6 @@ const app = express();
 const port = process.env.PORT || 4000;
 app.set('trust proxy', 1);
 
-
-// CORS configuration:
 // CORS configuration
 const allowedOrigins = [
   'http://localhost:5173', 
@@ -25,39 +23,28 @@ const allowedOrigins = [
   process.env.FRONTEND_URL 
 ].filter(Boolean);
 
-// Remove the existing CORS configuration and replace with this:
+console.log('Allowed origins:', allowedOrigins);
 
-// Handle preflight requests first
-app.options('*', cors({
-  origin: allowedOrigins,
-  credentials: true,
-  optionsSuccessStatus: 200
-}));
-
-// Main CORS middleware
+// Simplified CORS configuration
 app.use(cors({
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps, curl requests)
     if (!origin) {
-      console.log('No origin header - allowing request');
       return callback(null, true);
     }
     
     // Check if origin is in allowed origins
     if (allowedOrigins.includes(origin)) {
-      console.log('Origin allowed:', origin);
       return callback(null, true);
     }
     
     // Allow all vercel.app subdomains (for preview deployments)
     if (origin.includes('.vercel.app')) {
-      console.log('Vercel preview allowed:', origin);
       return callback(null, true);
     }
     
     // Allow all railway.app subdomains (for backend)
     if (origin.includes('.railway.app')) {
-      console.log('Railway allowed:', origin);
       return callback(null, true);
     }
     
@@ -69,6 +56,25 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'X-Requested-With'],
   exposedHeaders: ['Set-Cookie']
 }));
+
+// Handle preflight requests manually to avoid the wildcard issue
+app.options('/*', (req, res) => {
+  const origin = req.headers.origin;
+  
+  if (origin) {
+    // Check if origin is allowed
+    if (allowedOrigins.includes(origin) || 
+        origin.includes('.vercel.app') || 
+        origin.includes('.railway.app')) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    }
+  }
+  
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cookie, X-Requested-With');
+  res.sendStatus(200);
+});
 
 app.use(cookieParser());
 app.use(express.json({ limit: "1mb" }));
@@ -83,14 +89,10 @@ app.use("/scan", scanRouter);
 app.use("/auth", authRouter);
 app.use("/admin", adminRouter);
 
-// Health check route
+// Health check routes
 app.get("/", (req, res) => {
-  res.json({ message: "WebShield Backend server is running" });
-});
-// After your routes but before 404 handler, add:
-app.get("/api/health", (req, res) => {
   res.json({ 
-    status: "ok", 
+    message: "WebShield Backend server is running",
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development'
   });
@@ -104,11 +106,22 @@ app.get("/health", (req, res) => {
   });
 });
 
+app.get("/api/health", (req, res) => {
+  res.json({ 
+    status: "ok", 
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
 // 404 handler
 app.use((req, res) => {
+  console.log(`404 - Route not found: ${req.method} ${req.url}`);
   res.status(404).json({
     success: false,
-    error: "Route not found"
+    error: "Route not found",
+    path: req.url,
+    method: req.method
   });
 });
 
@@ -120,20 +133,20 @@ app.use((err, req, res, next) => {
   if (err.message === 'Not allowed by CORS') {
     return res.status(403).json({
       success: false,
-      error: "CORS policy violation: Origin not allowed"
+      error: "CORS policy violation: Origin not allowed",
+      allowedOrigins: allowedOrigins
     });
   }
   
   res.status(500).json({
     success: false,
     error: "Internal server error",
+    message: process.env.NODE_ENV === 'development' ? err.message : undefined
   });
 });
 
 app.listen(port, () => {
   console.log(`Server running on http://localhost:${port}`);
   console.log(`Frontend URL: http://localhost:5173`);
-  console.log(
-    `Database:  ${process.env.DB_URL ? "Connected" : "Not configured"}`
-  );
+  console.log(`Allowed origins: ${allowedOrigins.join(', ')}`);
 });
