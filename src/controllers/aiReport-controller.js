@@ -71,6 +71,18 @@ function ensureNmapStructuredFromRaw(scan) {
       continue;
     }
 
+    // Handle "Discovered open port" lines - FIXED
+    const discoveredMatch = line.match(/Discovered open port (\d+)\/(tcp|udp)/i);
+    if (discoveredMatch) {
+      const port = discoveredMatch[1];
+      const proto = discoveredMatch[2];
+      const readable = `${port}/${proto} open`;
+      if (!openPorts.includes(readable)) {
+        openPorts.push(readable);
+      }
+      continue;
+    }
+
     // lines like "| ssh-hostkey:" or "ssh-hostkey:" or script output containing ssh keys
     if (
       /ssh-hostkey/i.test(line) ||
@@ -302,8 +314,9 @@ function buildRawResults(scan) {
   // NMAP
   if (scan.scanType === "nmap") {
     const n = toolResults;
-    results += `\nNMAP SCAN RESULTS:\n------------------\nOpen Ports: ${n?.openPorts?.length || 0}\n\n`;
-    if (n?.openPorts?.length > 0)
+    const openPortsCount = n && n.openPorts && Array.isArray(n.openPorts) ? n.openPorts.length : 0;
+    results += `\nNMAP SCAN RESULTS:\n------------------\nOpen Ports: ${openPortsCount}\n\n`;
+    if (openPortsCount > 0)
       results += (n.openPorts || []).join("\n") + "\n";
     else results += "No open ports detected\n";
 
@@ -531,8 +544,10 @@ SCAN RESULTS:
 [NETWORK PORT AND SERVICE SCAN]
 Tool Used: Nmap
 `;
-      if (toolResults && Array.isArray(toolResults.openPorts) && toolResults.openPorts.length > 0)  {
-      text += `OPEN PORTS (${toolResults.openPorts.length}):\n`;
+    const openPortsCount = toolResults && toolResults.openPorts && Array.isArray(toolResults.openPorts) ? toolResults.openPorts.length : 0;
+    
+    if (openPortsCount > 0) {
+      text += `OPEN PORTS (${openPortsCount}):\n`;
       text += toolResults.openPorts.join("\n") + "\n\n";
     } else {
       text += `OPEN PORTS: NONE FOUND\n\n`;
