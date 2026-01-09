@@ -28,7 +28,7 @@ if (/^\d+\/tcp\s+open/i.test(line)) {
 } else if (/Discovered open port (\d+\/tcp)/i.test(line)) {
   const portMatch = line.match(/Discovered open port (\d+\/tcp) on/i);
   if (portMatch) {
-    openPorts.push(portMatch[1] + " open (discovered)");
+    openPorts.push(portMatch[1] + " open");
   }
 } else if (/^\d+\/tcp\s+filtered/i.test(line)) {
   filteredPorts.push(line);

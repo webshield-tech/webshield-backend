@@ -531,7 +531,7 @@ SCAN RESULTS:
 [NETWORK PORT AND SERVICE SCAN]
 Tool Used: Nmap
 `;
-    if (toolResults?.openPorts?.length) {
+      if (toolResults && Array.isArray(toolResults.openPorts) && toolResults.openPorts.length > 0)  {
       text += `OPEN PORTS (${toolResults.openPorts.length}):\n`;
       text += toolResults.openPorts.join("\n") + "\n\n";
     } else {
