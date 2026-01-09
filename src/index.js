@@ -25,8 +25,8 @@ const allowedOrigins = [
 
 console.log('Allowed origins:', allowedOrigins);
 
-// Simplified CORS configuration
-app.use(cors({
+// Create CORS options
+const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps, curl requests)
     if (!origin) {
@@ -52,20 +52,25 @@ app.use(cors({
     return callback(new Error('Not allowed by CORS'), false);
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'X-Requested-With'],
   exposedHeaders: ['Set-Cookie']
-}));
+};
 
-// Handle preflight requests manually to avoid the wildcard issue
-app.options('/*', (req, res) => {
+// Apply CORS to all routes
+app.use(cors(corsOptions));
+
+// Handle OPTIONS preflight requests separately
+app.options(/.*/, (req, res) => {
   const origin = req.headers.origin;
   
   if (origin) {
     // Check if origin is allowed
-    if (allowedOrigins.includes(origin) || 
-        origin.includes('.vercel.app') || 
-        origin.includes('.railway.app')) {
+    const isAllowed = allowedOrigins.includes(origin) || 
+                      origin.includes('.vercel.app') || 
+                      origin.includes('.railway.app');
+    
+    if (isAllowed) {
       res.setHeader('Access-Control-Allow-Origin', origin);
     }
   }
@@ -146,7 +151,6 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(port, () => {
-  console.log(`Server running on http://localhost:${port}`);
-  console.log(`Frontend URL: http://localhost:5173`);
+  console.log(`Server running on port ${port}`);
   console.log(`Allowed origins: ${allowedOrigins.join(', ')}`);
 });
