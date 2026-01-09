@@ -25,26 +25,40 @@ const allowedOrigins = [
 
 console.log('Allowed origins:', allowedOrigins);
 
+// Debug middleware - ADD THIS
+app.use((req, res, next) => {
+  console.log(`\n=== REQUEST ${req.method} ${req.url} ===`);
+  console.log('Origin:', req.headers.origin);
+  console.log('Host:', req.headers.host);
+  console.log('Cookies:', req.cookies);
+  console.log('=====================\n');
+  next();
+});
+
 // Create CORS options
 const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps, curl requests)
     if (!origin) {
+      console.log('No origin header, allowing request');
       return callback(null, true);
     }
     
     // Check if origin is in allowed origins
     if (allowedOrigins.includes(origin)) {
+      console.log('Origin allowed:', origin);
       return callback(null, true);
     }
     
     // Allow all vercel.app subdomains (for preview deployments)
     if (origin.includes('.vercel.app')) {
+      console.log('Vercel origin allowed:', origin);
       return callback(null, true);
     }
     
     // Allow all railway.app subdomains (for backend)
     if (origin.includes('.railway.app')) {
+      console.log('Railway origin allowed:', origin);
       return callback(null, true);
     }
     
@@ -63,6 +77,8 @@ app.use(cors(corsOptions));
 // Handle OPTIONS preflight requests separately
 app.options(/.*/, (req, res) => {
   const origin = req.headers.origin;
+  
+  console.log('OPTIONS preflight request from:', origin);
   
   if (origin) {
     // Check if origin is allowed

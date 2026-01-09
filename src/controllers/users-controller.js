@@ -20,7 +20,7 @@ export async function addUser(user) {
     const newUser = await createUser({
       username: user.username,
       email: user.email,
-      password: user.password,  // ✅ Plain password - createUser hashes it
+      password: user.password, 
       role: "user",
       scanLimit: 10,
       usedScan: 0,
@@ -78,17 +78,31 @@ export async function loginUser(req, res) {
       });
     }
 
-    res.cookie("token", result.token, {
+    // CREATE TOKEN - THIS WAS MISSING
+    const token = jwt.sign(
+      {
+        username: result.user.username,
+        email: result.user.email,
+        role: result.user.role,
+        userId: result.user._id,
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    // Set cookie
+    res.cookie('token', token, {
       httpOnly: true,
       secure: true,
-      sameSite: "none",
+      sameSite: 'none', 
+      domain: '.webshield.tech', 
       maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: "/",
-      // ✅ NO domain setting
+      path: '/'
     });
 
-    console.log("✅ Login successful for:", result.user.username);
-    console.log("✅ User ID in token:", result.user._id);
+    console.log("Login successful for:", result.user.username);
+    console.log("User ID in token:", result.user._id);
+    console.log("Cookie set with domain: .webshield.tech");
 
     res.json({
       success: true,
@@ -133,8 +147,7 @@ export async function signupUser(req, res) {
           : "Username already taken",
       });
     }
-
-    // ✅ Password is plain here - createUser will hash it
+    
     const newUser = await createUser({
       username,
       email,
@@ -144,30 +157,31 @@ export async function signupUser(req, res) {
       usedScan: 0,
     });
 
-    console.log("✅ User created with ID:", newUser._id);
+    console.log("User created with ID:", newUser._id);
 
     const token = jwt.sign(
       {
         username: newUser.username,
         email: newUser.email,
         role: newUser.role,
-        userId: newUser._id,  // ✅ This should be new user's ID
+        userId: newUser._id, 
       },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
-
-    res.cookie("token", token, {
+    
+    // Set cookie
+    res.cookie('token', token, {
       httpOnly: true,
-      secure: true,
-      sameSite: "none",
+      secure: true, 
+      sameSite: 'none', 
+      domain: '.webshield.tech',
       maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: "/",
-      // ✅ NO domain setting - REMOVED!
+      path: '/'
     });
 
-    console.log("✅ Signup successful for:", newUser.username);
-    console.log("✅ Token generated with user ID:", newUser._id);
+    console.log("Signup successful for:", newUser.username);
+    console.log("Token generated with user ID:", newUser._id);
 
     res.status(201).json({
       success: true,
@@ -201,7 +215,7 @@ export async function logoutUser(req, res) {
       secure: true,
       sameSite: "none",
       path: "/",
-      // ✅ NO domain setting - REMOVED!
+      domain: ".webshield.tech", // ADDED DOMAIN
     });
 
     console.log("Logout successful");
@@ -230,14 +244,14 @@ export async function getUserProfile(req, res) {
     const user = await User.findById(userId).select("-password");
 
     if (!user) {
-      console.log("❌ User not found for ID:", userId);
+      console.log("User not found for ID:", userId);
       return res.status(404).json({
         success: false,
         error: "User not found",
       });
     }
 
-    console.log("✅ Profile fetched for:", user.username);
+    console.log("Profile fetched for:", user.username);
 
     res.json({
       success: true,
