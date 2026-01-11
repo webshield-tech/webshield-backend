@@ -95,7 +95,7 @@ export async function loginUser(req, res) {
       httpOnly: true,
       secure: true,
       sameSite: 'none', 
-      domain: '.webshield.tech', 
+      // domain: '.webshield.tech', 
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: '/'
     });
@@ -175,7 +175,7 @@ export async function signupUser(req, res) {
       httpOnly: true,
       secure: true, 
       sameSite: 'none', 
-      domain: '.webshield.tech',
+      // domain: '.webshield.tech',
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: '/'
     });
@@ -215,7 +215,7 @@ export async function logoutUser(req, res) {
       secure: true,
       sameSite: "none",
       path: "/",
-      domain: ".webshield.tech", // ADDED DOMAIN
+      // domain: ".webshield.tech", // ADDED DOMAIN
     });
 
     console.log("Logout successful");
