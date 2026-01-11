@@ -20,7 +20,8 @@ const allowedOrigins = [
   'https://webshield.tech', 
   'https://www.webshield.tech', 
   'https://webshield-frontend.vercel.app',
-  'https://webshield-frontend.vercel.app', 
+  'https://webshield.tech/signup', 
+  'https://webshield.tech/login',
  
   process.env.FRONTEND_URL 
 ].filter(Boolean);
