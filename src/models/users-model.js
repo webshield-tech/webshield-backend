@@ -73,7 +73,6 @@ export async function verifyUser(user) {
         message: "You are logged in",
         token: token,
         user: {
-          // ✅ COMPLETE USER DATA:
           _id: userExists._id,
           userId: userExists._id,
           username: userExists.username,

@@ -95,7 +95,6 @@ export async function loginUser(req, res) {
       httpOnly: true,
       secure: true,
       sameSite: 'none', 
-      // domain: '.webshield.tech', 
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: '/'
     });
@@ -108,6 +107,7 @@ export async function loginUser(req, res) {
       success: true,
       message: result.message,
       user: result.user,
+      token: result.token || token,
     });
   } catch (error) {
     console.error("Login error:", error);
@@ -175,7 +175,6 @@ export async function signupUser(req, res) {
       httpOnly: true,
       secure: true, 
       sameSite: 'none', 
-      // domain: '.webshield.tech',
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: '/'
     });
@@ -195,6 +194,7 @@ export async function signupUser(req, res) {
         scanLimit: newUser.scanLimit,
         usedScan: 0,
       },
+        token: token, 
     });
   } catch (error) {
     console.error("Signup error:", error.message);
