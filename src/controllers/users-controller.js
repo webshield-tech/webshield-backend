@@ -264,6 +264,7 @@ export async function getUserProfile(req, res) {
         scanLimit: user.scanLimit,
         usedScan: user.usedScan || 0,
         createdAt: user.createdAt,
+       agreedToTerms: user.agreedToTerms, 
       },
     });
   } catch (error) {
