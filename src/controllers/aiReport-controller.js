@@ -72,7 +72,9 @@ function ensureNmapStructuredFromRaw(scan) {
     }
 
     // Handle "Discovered open port" lines - FIXED
-    const discoveredMatch = line.match(/Discovered open port (\d+)\/(tcp|udp)/i);
+    const discoveredMatch = line.match(
+      /Discovered open port (\d+)\/(tcp|udp)/i
+    );
     if (discoveredMatch) {
       const port = discoveredMatch[1];
       const proto = discoveredMatch[2];
@@ -155,7 +157,7 @@ function ensureNmapStructuredFromRaw(scan) {
   scan.results.nmap = merged;
 }
 
-// Helper function to get tool-specific results 
+// Helper function to get tool-specific results
 function getToolResults(scan) {
   if (!scan.results) return null;
 
@@ -273,7 +275,7 @@ function niktoDiagnostic(scan) {
   // Check if scan completed
   if (results.scanStats?.scanCompleted) {
     if (results.totalFindings > 0) {
-      return null; 
+      return null;
     } else {
       return "Diagnostics: Scan completed but found no vulnerabilities.";
     }
@@ -314,10 +316,10 @@ function buildRawResults(scan) {
   // NMAP
   if (scan.scanType === "nmap") {
     const n = toolResults;
-    const openPortsCount = n && n.openPorts && Array.isArray(n.openPorts) ? n.openPorts.length : 0;
+    const openPortsCount =
+      n && n.openPorts && Array.isArray(n.openPorts) ? n.openPorts.length : 0;
     results += `\nNMAP SCAN RESULTS:\n------------------\nOpen Ports: ${openPortsCount}\n\n`;
-    if (openPortsCount > 0)
-      results += (n.openPorts || []).join("\n") + "\n";
+    if (openPortsCount > 0) results += (n.openPorts || []).join("\n") + "\n";
     else results += "No open ports detected\n";
 
     if (n?.hostInfo) {
@@ -525,7 +527,7 @@ function buildRawResults(scan) {
   return results || "No detailed results available";
 }
 
-// Prompt builder for AI 
+// Prompt builder for AI
 
 function buildSummaryText(scan) {
   let text = `
@@ -544,8 +546,13 @@ SCAN RESULTS:
 [NETWORK PORT AND SERVICE SCAN]
 Tool Used: Nmap
 `;
-    const openPortsCount = toolResults && toolResults.openPorts && Array.isArray(toolResults.openPorts) ? toolResults.openPorts.length : 0;
-    
+    const openPortsCount =
+      toolResults &&
+      toolResults.openPorts &&
+      Array.isArray(toolResults.openPorts)
+        ? toolResults.openPorts.length
+        : 0;
+
     if (openPortsCount > 0) {
       text += `OPEN PORTS (${openPortsCount}):\n`;
       text += toolResults.openPorts.join("\n") + "\n\n";
@@ -647,7 +654,7 @@ INSTRUCTIONS FOR AI:
   return text;
 }
 
-//  buildReportContent 
+//  buildReportContent
 
 function buildReportContent(scan, aiText) {
   return `
@@ -678,7 +685,7 @@ Report ID: ${scan._id}
 `.trim();
 }
 
-// generateAIReportForScan 
+// generateAIReportForScan
 
 export const generateAIReportForScan = async (req, res) => {
   try {
@@ -689,13 +696,11 @@ export const generateAIReportForScan = async (req, res) => {
     if (!scan)
       return res.status(404).json({ success: false, error: "Scan not found" });
     if (scan.status !== "completed")
-      return res
-        .status(400)
-        .json({
-          success: false,
-          error: "Scan is not completed yet",
-          status: scan.status,
-        });
+      return res.status(400).json({
+        success: false,
+        error: "Scan is not completed yet",
+        status: scan.status,
+      });
     if (scan.reportContent)
       return res.json({
         success: true,
@@ -776,7 +781,7 @@ export const generateAIReportForScan = async (req, res) => {
   }
 };
 
-// Download & view handlers 
+// Download & view handlers
 
 export const downloadReport = async (req, res) => {
   try {
@@ -786,13 +791,11 @@ export const downloadReport = async (req, res) => {
     if (!scan)
       return res.status(404).json({ success: false, error: "Scan not found" });
     if (!scan.reportContent)
-      return res
-        .status(404)
-        .json({
-          success: false,
-          error: "Report not generated yet",
-          message: "Please generate the report first",
-        });
+      return res.status(404).json({
+        success: false,
+        error: "Report not generated yet",
+        message: "Please generate the report first",
+      });
 
     const domain = new URL(scan.targetUrl).hostname;
     const date = (scan.reportGeneratedAt || new Date())
@@ -819,13 +822,11 @@ export const viewReport = async (req, res) => {
     if (!scan)
       return res.status(404).json({ success: false, error: "Scan not found" });
     if (!scan.reportContent)
-      return res
-        .status(404)
-        .json({
-          success: false,
-          error: "Report not generated yet",
-          message: "Please generate the report first",
-        });
+      return res.status(404).json({
+        success: false,
+        error: "Report not generated yet",
+        message: "Please generate the report first",
+      });
 
     res.json({
       success: true,
