@@ -1,10 +1,21 @@
 import { verifyUser, createUser } from "../models/users-model.js";
 import { User } from "../models/users-mongoose.js";
 import jwt from "jsonwebtoken";
+import { verifyEmailExistence } from "../utils/email-verifier.js";
 
 // Add new user
 export async function addUser(user) {
   try {
+    // Verify email before checking existing users
+    console.log(`Verifying email for addUser: ${user.email}`);
+    const isEmailValid = await verifyEmailExistence(user.email);
+    
+    if (!isEmailValid) {
+      return {
+        error: "Please provide a valid, deliverable email address. Temporary/disposable emails are not allowed."
+      };
+    }
+
     const existingUser = await User.findOne({
       $or: [{ email: user.email }, { username: user.username }]
     });
@@ -135,6 +146,18 @@ export async function signupUser(req, res) {
       });
     }
 
+    //  Verify email existence with API
+    console.log(`Verifying email: ${email}`);
+    const isEmailValid = await verifyEmailExistence(email);
+    
+    if (!isEmailValid) {
+      console.log(`Email verification failed for: ${email}`);
+      return res.status(400).json({
+        success: false,
+        error: "Please provide a valid, deliverable email address. Temporary/disposable emails are not allowed.",
+      });
+    }
+
     const existingUser = await User.findOne({
       $or: [{ email }, { username }],
     });
@@ -194,7 +217,7 @@ export async function signupUser(req, res) {
         scanLimit: newUser.scanLimit,
         usedScan: 0,
       },
-        token: token, 
+      token: token, 
     });
   } catch (error) {
     console.error("Signup error:", error.message);
@@ -264,7 +287,7 @@ export async function getUserProfile(req, res) {
         scanLimit: user.scanLimit,
         usedScan: user.usedScan || 0,
         createdAt: user.createdAt,
-       agreedToTerms: user.agreedToTerms, 
+        agreedToTerms: user.agreedToTerms, 
       },
     });
   } catch (error) {

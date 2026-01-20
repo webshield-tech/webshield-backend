@@ -2,11 +2,21 @@ import bcrypt from "bcrypt";
 import { User } from "./users-mongoose.js";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
+import { verifyEmailExistence } from "../utils/email-verifier.js"; 
 
 dotenv.config();
 
 export async function createUser(user) {
   try {
+    // Verify email before checking existing users
+    console.log(`Email verification for: ${user.email}`);
+    const isEmailValid = await verifyEmailExistence(user.email);
+    
+    if (!isEmailValid) {
+      throw new Error("Please provide a valid, deliverable email address. Temporary/disposable emails are not allowed.");
+    }
+
+    // Check if user already exists
     const existingUser = await User.findOne({
       $or: [{ username: user.username }, { email: user.email }],
     });
@@ -33,6 +43,7 @@ export async function createUser(user) {
     });
 
     const savedUser = await newUser.save();
+    console.log(`User created successfully: ${user.email}`);
     return savedUser;
   } catch (error) {
     console.error("Error saving User:", error.message);

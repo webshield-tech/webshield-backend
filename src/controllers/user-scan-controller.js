@@ -176,7 +176,6 @@ export async function startScan(req, res) {
             break;
           }
         case "ssl": {
-  // Correct format: "hostname:443" as single argument
   const args = ["--no-colour", "--timeout", "5", `${hostname}:443`];
   await startProcess(scanId, "sslscan", args, {
     timeoutMs: 30000,
