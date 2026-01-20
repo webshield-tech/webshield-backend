@@ -1,4 +1,3 @@
-// backend/utils/emailVerifier.js
 import axios from 'axios';
 import dotenv from "dotenv";
 
