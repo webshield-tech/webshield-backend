@@ -1,7 +1,8 @@
 export async function signUpValidation(req, res, next) {
   const { email, password, username } = req.body;
 
-  const emailRegex = /^[a-zA-Z0-9][a-zA-Z0-9._-]{2,}@[a-zA-Z0-9][a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+  const emailRegex =
+    /^[a-zA-Z0-9][a-zA-Z0-9._-]{2,}@[a-zA-Z0-9][a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
   const validEmail = emailRegex.test(email);
   const passwordRegex =
     /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?])[A-Za-z\d!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]{8,}$/;
@@ -12,13 +13,15 @@ export async function signUpValidation(req, res, next) {
     next();
   } else {
     res.status(400).json({
-      error: 'Invalid user data',
+      error: "Invalid user data",
       details: {
-        email: validEmail ? 'Valid' : 'Invalid email format',
+        email: validEmail ? "Valid" : "Invalid email format",
         password: validPassword
-          ? 'Valid'
-          : 'Password must contain: 8+ characters, uppercase, lowercase, Number, Special character',
-        username: validUsername ? 'Valid' : 'Username must be at least 3 characters',
+          ? "Valid"
+          : "Password must contain: 8+ characters, uppercase, lowercase, Number, Special character",
+        username: validUsername
+          ? "Valid"
+          : "Username must be at least 3 characters",
       },
     });
   }
@@ -26,20 +29,21 @@ export async function signUpValidation(req, res, next) {
 
 export async function loginValidation(req, res, next) {
   // Accept email, username, or emailOrUsername
-  const identifier = req.body.emailOrUsername || req.body.email || req.body.username;
+  const identifier =
+    req.body.emailOrUsername || req.body.email || req.body.username;
   const password = req.body.password;
 
   if (!identifier) {
     return res.status(400).json({
       success: false,
-      error: 'Please fill the Fields',
+      error: "Please fill the Fields",
     });
   }
 
   if (!password) {
     return res.status(400).json({
       success: false,
-      error: 'Password is required',
+      error: "Password is required",
     });
   }
 
@@ -53,8 +57,9 @@ export async function loginValidation(req, res, next) {
   } else {
     res.status(400).json({
       success: false,
-      error: 'Invalid password format',
-      details: 'Password must contain:  8+ chars, uppercase, lowercase, number, special character',
+      error: "Invalid password format",
+      details:
+        "Password must contain:  8+ chars, uppercase, lowercase, number, special character",
     });
   }
 }

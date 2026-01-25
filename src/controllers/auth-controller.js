@@ -40,7 +40,7 @@ export async function forgotPassword(req, res) {
         type: "password_reset",
       },
       process.env.JWT_RESET_SECRET,
-      { expiresIn: "15m" }
+      { expiresIn: "15m" },
     );
 
     //SAVE TOKEN TO DATABASE
@@ -129,14 +129,14 @@ export async function resetPassword(req, res) {
       });
     }
 
-// ENCRYPTING PASSWORD
-const salt = await bcrypt.genSalt(10);
-const hashedPassword = await bcrypt.hash(newPassword, salt);
+    // ENCRYPTING PASSWORD
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
 
     // UPDATING USER PASSWORD
     await User.findOneAndUpdate(
       { email: decoded.email },
-      { password: hashedPassword }
+      { password: hashedPassword },
     );
 
     // MARKING TOKEN AS USED

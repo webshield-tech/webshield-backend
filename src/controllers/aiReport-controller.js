@@ -7,7 +7,6 @@ function ensureNmapStructuredFromRaw(scan) {
   if (!scan || scan.scanType !== "nmap" || !scan.results) return;
 
   const already = scan.results.nmap || {};
-  // If some good structured data exists, still allow fallback to fill missing pieces
   const hasUseful =
     (Array.isArray(already.openPorts) && already.openPorts.length > 0) ||
     (Array.isArray(already.serviceVersions) &&
@@ -16,13 +15,11 @@ function ensureNmapStructuredFromRaw(scan) {
 
   const raw = String(already.rawOutput || scan.results.rawOutput || "");
   if (!raw.trim()) return;
-
-  // If structured exists and looks good, skip heavy fallback
   if (hasUseful) {
     const cves = Array.from(
       new Set(
-        (raw.match(/CVE-\d{4}-\d{4,7}/gi) || []).map((c) => c.toUpperCase())
-      )
+        (raw.match(/CVE-\d{4}-\d{4,7}/gi) || []).map((c) => c.toUpperCase()),
+      ),
     );
     if (cves.length && (!already.cveList || already.cveList.length === 0)) {
       scan.results.nmap = {
@@ -71,9 +68,9 @@ function ensureNmapStructuredFromRaw(scan) {
       continue;
     }
 
-    // Handle "Discovered open port" lines - FIXED
+    // Handle "Discovered open port" lines
     const discoveredMatch = line.match(
-      /Discovered open port (\d+)\/(tcp|udp)/i
+      /Discovered open port (\d+)\/(tcp|udp)/i,
     );
     if (discoveredMatch) {
       const port = discoveredMatch[1];
@@ -85,7 +82,6 @@ function ensureNmapStructuredFromRaw(scan) {
       continue;
     }
 
-    // lines like "| ssh-hostkey:" or "ssh-hostkey:" or script output containing ssh keys
     if (
       /ssh-hostkey/i.test(line) ||
       line.toLowerCase().startsWith("| ssh-hostkey") ||
@@ -94,8 +90,6 @@ function ensureNmapStructuredFromRaw(scan) {
       sshHostKeys.push(line);
       continue;
     }
-
-    // service/version details lines often start with '|' in nmap -sV output or "Service Info:"
     if (
       (line.startsWith("|") && line.includes(":")) ||
       /Service Info:/i.test(line) ||
@@ -107,17 +101,16 @@ function ensureNmapStructuredFromRaw(scan) {
       continue;
     }
 
-    // OS detection hints
+    // OS detection
     if (
       /OS details:|Aggressive OS guesses:|No exact OS matches|Running:|OS:|Uptime guess:/i.test(
-        line
+        line,
       )
     ) {
       osHints.push(line);
       continue;
     }
 
-    // extract any CVE mentions in free text lines
     const cves = line.match(/CVE-\d{4}-\d{4,7}/gi);
     if (cves) cves.forEach((c) => cveSet.add(c.toUpperCase()));
   }

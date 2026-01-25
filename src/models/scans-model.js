@@ -1,4 +1,4 @@
-import { Scan } from './scans-mongoose.js';
+import { Scan } from "./scans-mongoose.js";
 
 export async function createScan(scanData) {
   try {
@@ -6,7 +6,7 @@ export async function createScan(scanData) {
     const savedScan = await newScan.save();
     return savedScan;
   } catch (error) {
-    console.error('Error Creating new Scan', error.message);
+    console.error("Error Creating new Scan", error.message);
     throw error;
   }
 }
@@ -15,7 +15,7 @@ export async function userScanHistory(userId) {
     const scans = await Scan.find({ userId: userId }).sort({ createdAt: -1 });
     return scans;
   } catch (error) {
-    console.error('Error fetching user Scans: ', error.message);
+    console.error("Error fetching user Scans: ", error.message);
     throw error;
   }
 }
@@ -25,7 +25,7 @@ export async function scanById(scanId, userId) {
     const scan = await Scan.findOne({ _id: scanId, userId: userId });
     return scan;
   } catch (error) {
-    console.error('Error fetching scan:', error.message);
+    console.error("Error fetching scan:", error.message);
     throw error;
   }
 }
@@ -38,7 +38,7 @@ export async function deleteScan(scanId, userId) {
     });
     return deletedScan;
   } catch (error) {
-    console.error('Error deleting scan:', error.message);
+    console.error("Error deleting scan:", error.message);
     throw error;
   }
 }
@@ -48,14 +48,14 @@ export async function updateScanResult(scanId, results) {
     return await Scan.findByIdAndUpdate(
       scanId,
       {
-        status: 'completed',
+        status: "completed",
         results,
         completedAt: new Date(),
       },
-      { new: true }
+      { new: true },
     );
   } catch (error) {
-    console.error('Error updating scan results:', error.message);
+    console.error("Error updating scan results:", error.message);
     throw error;
   }
 }

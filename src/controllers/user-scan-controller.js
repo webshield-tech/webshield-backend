@@ -10,7 +10,7 @@ import { validateHostname } from "../utils/validations/hostname-validation.js";
 
 const ALLOWED_SCANS = ["nmap", "nikto", "ssl", "sqlmap"];
 
-// START NEW SCAN 
+// START NEW SCAN
 export async function startScan(req, res) {
   try {
     const userId = req.userId || req.user?.userId;
@@ -40,7 +40,7 @@ export async function startScan(req, res) {
     }
     const finalUrl = validation.url;
 
-    // Prevent duplicate concurrent scans for same user+target+type
+    // Prevent duplicate concurrent scans for same
     const existing = await Scan.findOne({
       userId,
       targetUrl: finalUrl,
@@ -83,7 +83,7 @@ export async function startScan(req, res) {
     const updatedUser = await User.findByIdAndUpdate(
       userId,
       { $inc: { usedScan: 1 } },
-      { new: true }
+      { new: true },
     ).select("-password");
 
     // Mark scan as running and attach startedat
@@ -120,7 +120,7 @@ export async function startScan(req, res) {
         // if process is already tracke, don't start another
         if (hasProcess(scanId)) {
           console.warn(
-            `[startScan][background] process already exists for scan ${scanId}`
+            `[startScan][background] process already exists for scan ${scanId}`,
           );
           return;
         }
@@ -140,19 +140,22 @@ export async function startScan(req, res) {
 
         switch (scanType) {
           case "nmap": {
-          const args = [
-  "-Pn",
-  "-T4",
-  "-sT", 
-  "-sV",
-  "-sC",
-  "-O",
-  "-v",
-  "--top-ports", "20",    
-  "--max-retries", "1",
-  "--host-timeout", "300s",
-  hostname,
-];
+            const args = [
+              "-Pn",
+              "-T4",
+              "-sT",
+              "-sV",
+              "-sC",
+              "-O",
+              "-v",
+              "--top-ports",
+              "20",
+              "--max-retries",
+              "1",
+              "--host-timeout",
+              "300s",
+              hostname,
+            ];
             await startProcess(scanId, "nmap", args, {
               timeoutMs: 600000,
               maxRaw: 400000,
@@ -166,7 +169,7 @@ export async function startScan(req, res) {
               "-port",
               "80",
               "-Tuning",
-              "b", 
+              "b",
               "-maxtime",
               "120s",
               "-nointeractive",
@@ -175,68 +178,85 @@ export async function startScan(req, res) {
             await startProcess(scanId, "nikto", args, { timeoutMs: 180000 });
             break;
           }
-        case "ssl": {
-  const args = ["--no-colour", "--timeout", "5", `${hostname}:443`];
-  await startProcess(scanId, "sslscan", args, {
-    timeoutMs: 30000,
-    maxRaw: 10000,
-  });
-  break;
-}
-     case "sqlmap": {
-  // If there is already a parameter, just scan as is.
-  if (finalUrl.includes("?")) {
-    const args = [
-      "-u",
-      finalUrl,
-      "--batch",
-      "--smart",
-      "--level", "5",
-      "--risk", "3",
-      "--threads", "3",
-      "--forms",
-      "--crawl", "3",
-      "--no-cast",
-      "--disable-coloring",
-    ];
-    await startProcess(scanId, "sqlmap", args, { timeoutMs: 185000 });
-    break;
-  }
+          case "ssl": {
+            const args = ["--no-colour", "--timeout", "5", `${hostname}:443`];
+            await startProcess(scanId, "sslscan", args, {
+              timeoutMs: 30000,
+              maxRaw: 10000,
+            });
+            break;
+          }
+          case "sqlmap": {
+            // If there is already a parameter, just scan as is.
+            if (finalUrl.includes("?")) {
+              const args = [
+                "-u",
+                finalUrl,
+                "--batch",
+                "--smart",
+                "--level",
+                "5",
+                "--risk",
+                "3",
+                "--threads",
+                "3",
+                "--forms",
+                "--crawl",
+                "3",
+                "--no-cast",
+                "--disable-coloring",
+              ];
+              await startProcess(scanId, "sqlmap", args, { timeoutMs: 185000 });
+              break;
+            }
 
-  // If no parameter, try common parameter names!
-  const commonParams = [
-    "id", "userid", "user", "cat", "category", "pid", "prod", "product",
-    "page", "q", "search", "type", "item", "order"
-  ];
+            // If no parameter, try common parameter names!
+            const commonParams = [
+              "id",
+              "userid",
+              "user",
+              "cat",
+              "category",
+              "pid",
+              "prod",
+              "product",
+              "page",
+              "q",
+              "search",
+              "type",
+              "item",
+              "order",
+            ];
 
-  // Schedule scans for each param, plus the original url with --crawl/forms
-  for (const param of commonParams) {
-    const guessedUrl = finalUrl.replace(/\/+$/, "") + `?${param}=1`;
-    const args = [
-      "-u",
-      guessedUrl,
-      "--batch",
-      "--smart",
-      "--level", "5",
-      "--risk", "3",
-      "--threads", "3",
-      "--forms",
-      "--crawl", "3",
-      "--no-cast",
-      "--disable-coloring",
-    ];
-    // You may want to record (or merge) the scan results!
-    // For demo: await startProcess for first param only, or queue/merge results as desired.
-    await startProcess(scanId, "sqlmap", args, { timeoutMs: 185000 });
-    // BREAK after first for demo, or let it scan all params: remove break for advanced use.
-    break;
-  }
+            // Schedule scans for each param, plus the original url with --crawl/forms
+            for (const param of commonParams) {
+              const guessedUrl = finalUrl.replace(/\/+$/, "") + `?${param}=1`;
+              const args = [
+                "-u",
+                guessedUrl,
+                "--batch",
+                "--smart",
+                "--level",
+                "5",
+                "--risk",
+                "3",
+                "--threads",
+                "3",
+                "--forms",
+                "--crawl",
+                "3",
+                "--no-cast",
+                "--disable-coloring",
+              ];
 
-  // Also scan the base with crawl/forms as fallback (already included in args above!)
-  break;
-}
+              await startProcess(scanId, "sqlmap", args, { timeoutMs: 185000 });
+
+              break;
+            }
+
+            break;
+          }
           default: {
-            // should not happen
             await Scan.findByIdAndUpdate(scanId, {
               status: "failed",
               results: { error: "Unsupported scan type" },
@@ -248,7 +268,7 @@ export async function startScan(req, res) {
       } catch (err) {
         console.error(
           "[startScan][background] scan runner error:",
-          err?.message || err
+          err?.message || err,
         );
         try {
           await Scan.findByIdAndUpdate(savedScan._id, {
@@ -267,7 +287,7 @@ export async function startScan(req, res) {
   }
 }
 
-//  GET USER SCAN HISTORY 
+//  GET USER SCAN HISTORY
 export async function getScanHistory(req, res) {
   try {
     const userId = req.userId || req.user?.userId;
@@ -284,7 +304,7 @@ export async function getScanHistory(req, res) {
   }
 }
 
-// GET SCAN RESULTS BY ID 
+// GET SCAN RESULTS BY ID
 export async function getScanResultsById(req, res) {
   try {
     const userId = req.userId || req.user?.userId;
@@ -308,7 +328,7 @@ export async function getScanResultsById(req, res) {
   }
 }
 
-// CANCEL SCAN 
+// CANCEL SCAN
 export async function cancelScan(req, res) {
   try {
     const userId = req.userId || req.user?.userId;
@@ -331,7 +351,7 @@ export async function cancelScan(req, res) {
       });
     }
 
-    // Attempt to kill an active process (if exists)
+    // Attempt to kill an active process
     try {
       const result = await killProcess(scanId, `Cancelled by user ${userId}`);
       if (result.killed) {

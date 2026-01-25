@@ -1,8 +1,10 @@
 export function parseNmap(rawOutput = "", target = "") {
   const out = rawOutput || "";
   // Check if scan was interrupted
-  if (out.includes("Scan terminated") || 
-      out.includes("Nmap done") && out.includes("scanned in")) {
+  if (
+    out.includes("Scan terminated") ||
+    (out.includes("Nmap done") && out.includes("scanned in"))
+  ) {
     // Scan completed normally
     console.log("Nmap scan completed");
   } else if (out.length < 500) {
@@ -23,18 +25,18 @@ export function parseNmap(rawOutput = "", target = "") {
   const cveSet = new Set();
 
   for (const line of lines) {
-if (/^\d+\/tcp\s+open/i.test(line)) {
-  openPorts.push(line);
-} else if (/Discovered open port (\d+\/tcp)/i.test(line)) {
-  const portMatch = line.match(/Discovered open port (\d+\/tcp) on/i);
-  if (portMatch) {
-    openPorts.push(portMatch[1] + " open");
-  }
-} else if (/^\d+\/tcp\s+filtered/i.test(line)) {
-  filteredPorts.push(line);
-} else if (/^\d+\/tcp\s+closed/i.test(line)) {
-  if (closedPorts.length < 20) closedPorts.push(line);
-}
+    if (/^\d+\/tcp\s+open/i.test(line)) {
+      openPorts.push(line);
+    } else if (/Discovered open port (\d+\/tcp)/i.test(line)) {
+      const portMatch = line.match(/Discovered open port (\d+\/tcp) on/i);
+      if (portMatch) {
+        openPorts.push(portMatch[1] + " open");
+      }
+    } else if (/^\d+\/tcp\s+filtered/i.test(line)) {
+      filteredPorts.push(line);
+    } else if (/^\d+\/tcp\s+closed/i.test(line)) {
+      if (closedPorts.length < 20) closedPorts.push(line);
+    }
 
     // service/version lines may start with '|' or contain "Service Info"
     if (line.startsWith("|") && line.includes(":")) {
@@ -79,7 +81,7 @@ if (/^\d+\/tcp\s+open/i.test(line)) {
 
   return {
     tool: "nmap",
-       success: rawOutput.length > 0,
+    success: rawOutput.length > 0,
     openPorts,
     totalPorts: openPorts.length,
     filteredPorts,
@@ -142,7 +144,7 @@ export function parseNikto(rawOutput = "", target = "") {
         const lower = cleaned.toLowerCase();
         if (
           /(sql injection|command execution|remote shell|rce|critical)/i.test(
-            lower
+            lower,
           )
         ) {
           critical.push(cleaned);
@@ -152,7 +154,7 @@ export function parseNikto(rawOutput = "", target = "") {
           high.push(cleaned);
         } else if (
           /(information disclosure|directory listing|misconfiguration|medium)/i.test(
-            lower
+            lower,
           )
         ) {
           medium.push(cleaned);
@@ -204,7 +206,7 @@ export function parseSqlmap(rawOutput = "", target = "") {
 
     if (
       /is vulnerable|is injectable|parameter.*is vulnerable|payload:/i.test(
-        line
+        line,
       ) ||
       lower.includes("sql injection")
     ) {
@@ -214,7 +216,7 @@ export function parseSqlmap(rawOutput = "", target = "") {
 
     if (
       /does not seem to be injectable|not injectable|could not fingerprint/i.test(
-        lower
+        lower,
       )
     ) {
       warnings.push(line);
@@ -319,7 +321,7 @@ export function parseSsl(rawOutput = "", target = "") {
 
   // FIXED: If no issues found, success = true
   // If issues found, success = false (because SSL has problems)
- const success = rawOutput.length > 0; 
+  const success = rawOutput.length > 0;
 
   return {
     tool: "ssl",

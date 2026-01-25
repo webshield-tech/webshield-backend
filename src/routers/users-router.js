@@ -3,7 +3,12 @@ import {
   loginValidation,
   signUpValidation,
 } from "../utils/validations/user-validation.js";
-import { loginUser, signupUser, logoutUser, getUserProfile } from "../controllers/users-controller.js";
+import {
+  loginUser,
+  signupUser,
+  logoutUser,
+  getUserProfile,
+} from "../controllers/users-controller.js";
 import { checkAuth } from "../middlewares/user-auth.js";
 import { User } from "../models/users-mongoose.js";
 import dotenv from "dotenv";
@@ -19,17 +24,18 @@ userRouter.post("/signup", signUpValidation, signupUser);
 userRouter.post("/login", loginValidation, loginLimiter, loginUser);
 
 // GET USER PROFILE
-userRouter.get('/profile', checkAuth, getUserProfile);
+userRouter.get("/profile", checkAuth, getUserProfile);
 
 // LOGOUT ROUTE
-userRouter.post('/logout', logoutUser);
+userRouter.post("/logout", logoutUser);
 
 // Accept terms route
 userRouter.post("/accept-terms", checkAuth, async (req, res) => {
   try {
     const userId = req.userId;
 
-    const userIP = req.headers["x-forwarded-for"] || req.connection.remoteAddress;
+    const userIP =
+      req.headers["x-forwarded-for"] || req.connection.remoteAddress;
 
     await User.findByIdAndUpdate(userId, {
       agreedToTerms: true,

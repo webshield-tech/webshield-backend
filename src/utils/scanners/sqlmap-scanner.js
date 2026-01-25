@@ -34,7 +34,9 @@ export async function scanWithSqlmap(targetUrl) {
     ];
 
     return await new Promise((resolve) => {
-      const child = spawn("sqlmap", args, { stdio: ["ignore", "pipe", "pipe"] });
+      const child = spawn("sqlmap", args, {
+        stdio: ["ignore", "pipe", "pipe"],
+      });
 
       let stdout = "";
       let stderr = "";
@@ -64,13 +66,16 @@ export async function scanWithSqlmap(targetUrl) {
           success: false,
           error: err.message,
           rawOutput: stderr || stdout,
-          target: testUrl, // <--- Always use testUrl
+          target: testUrl,
         });
       });
 
       child.on("close", () => {
         clearTimeout(timer);
-        const lines = stdout.split("\n").map((l) => l.trim()).filter(Boolean);
+        const lines = stdout
+          .split("\n")
+          .map((l) => l.trim())
+          .filter(Boolean);
 
         let vulnerable = false;
         const vulnerabilities = [];
@@ -131,7 +136,7 @@ export async function scanWithSqlmap(targetUrl) {
           tables,
           injectionPoints,
           details: {
-            testedUrl: testUrl, // <--- Always use testUrl
+            testedUrl: testUrl,
             dbms,
             payload,
             findingsCount: vulnerabilities.length,
@@ -139,7 +144,7 @@ export async function scanWithSqlmap(targetUrl) {
             tablesFound: tables.length,
           },
           rawOutput: stdout,
-          target: testUrl, // <--- Always use testUrl
+          target: testUrl,
           summary: vulnerable
             ? `SQL injection detected (DB: ${dbms || "unknown"})`
             : "No SQL injection detected",
@@ -158,7 +163,7 @@ export async function scanWithSqlmap(targetUrl) {
       tables: [],
       injectionPoints: [],
       rawOutput: "",
-      target: targetUrl, // <--- Always use targetUrl if errored
+      target: targetUrl,
     };
   }
 }

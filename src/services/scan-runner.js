@@ -47,18 +47,18 @@ export async function startProcess(scanId, executable, args = [], opts = {}) {
       }
     }, logIntervalMs);
 
-  processes.set(scanId, {
-  child,
-  buffers,
-  timeoutTimer,
-  logInterval,
-  executable,
-  args,
-  maxPartial,
-  maxRaw,
-  timeoutMs,
-  logIntervalMs,
-});
+    processes.set(scanId, {
+      child,
+      buffers,
+      timeoutTimer,
+      logInterval,
+      executable,
+      args,
+      maxPartial,
+      maxRaw,
+      timeoutMs,
+      logIntervalMs,
+    });
     child.stdout.on("data", (chunk) => {
       buffers.stdout += chunk.toString();
       if (buffers.stdout.length > maxRaw)
@@ -105,11 +105,11 @@ export async function startProcess(scanId, executable, args = [], opts = {}) {
 
         let status = "completed";
 
-if ((out || err).trim().length > 0) {
-  status = "completed";
-} else {
-  status = "failed";
-}
+        if ((out || err).trim().length > 0) {
+          status = "completed";
+        } else {
+          status = "failed";
+        }
 
         await Scan.findByIdAndUpdate(scanId, {
           status: status,
@@ -183,7 +183,7 @@ export async function killProcess(scanId, reason = "Killed by user") {
     } catch (dbErr) {
       console.error(
         "[scan-runner] DB update error when killProcess had no entry:",
-        dbErr
+        dbErr,
       );
     }
     return { killed: false, msg: "No running process found" };
@@ -219,9 +219,7 @@ export async function killProcess(scanId, reason = "Killed by user") {
   }
 }
 
-/**
- * Kill all running processes (used during graceful shutdown)
- */
+// Kill all running processes (used during graceful shutdown)
 export async function killAllProcesses() {
   const entries = Array.from(processes.keys());
   for (const scanId of entries) {

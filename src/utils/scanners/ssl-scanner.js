@@ -28,11 +28,7 @@ export async function scanWithSsl(targetUrl) {
       };
     }
 
-    const args = [
-  "--no-colour",
-  // REMOVE THIS: "--show-client-cas",  // This makes output huge!
-  domain,
-];
+    const args = ["--no-colour", domain];
 
     return await new Promise((resolve) => {
       const child = spawn("sslscan", args, {

@@ -1,5 +1,5 @@
-import Groq from 'groq-sdk';
-import dotenv from 'dotenv';
+import Groq from "groq-sdk";
+import dotenv from "dotenv";
 dotenv.config();
 
 const groq = new Groq({
@@ -9,11 +9,11 @@ const groq = new Groq({
 export async function aiReport(summaryText) {
   try {
     const response = await groq.chat.completions.create({
-      model: 'llama-3.1-8b-instant',
+      model: "llama-3.1-8b-instant",
       messages: [
         {
-          role: 'system',
-        content: `You are a cybersecurity assistant. Your job is to explain scan results using ONLY the data provided.
+          role: "system",
+          content: `You are a cybersecurity assistant. Your job is to explain scan results using ONLY the data provided.
 
 RULES:
 1. NEVER guess or invent data
@@ -28,7 +28,7 @@ RULES:
 IMPORTANT: Look at the "ACTUAL SCAN DATA" and diagnostics, then provide safe/unsafe insights with reasons.`,
         },
         {
-          role: 'user',
+          role: "user",
           content: summaryText,
         },
       ],
@@ -37,9 +37,9 @@ IMPORTANT: Look at the "ACTUAL SCAN DATA" and diagnostics, then provide safe/uns
     });
     return response.choices[0].message.content;
   } catch (error) {
-    console.error('AI Report Error:', error);
+    console.error("AI Report Error:", error);
     return (
-      'ERROR: Could not generate AI analysis. Please check the raw scan results below.\n\n' +
+      "ERROR: Could not generate AI analysis. Please check the raw scan results below.\n\n" +
       summaryText
     );
   }

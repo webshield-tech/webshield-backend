@@ -9,29 +9,31 @@ export async function addUser(user) {
     // Verify email before checking existing users
     console.log(`Verifying email for addUser: ${user.email}`);
     const isEmailValid = await verifyEmailExistence(user.email);
-    
+
     if (!isEmailValid) {
       return {
-        error: "Please provide a valid, deliverable email address. Temporary/disposable emails are not allowed."
+        error:
+          "Please provide a valid, deliverable email address. Temporary/disposable emails are not allowed.",
       };
     }
 
     const existingUser = await User.findOne({
-      $or: [{ email: user.email }, { username: user.username }]
+      $or: [{ email: user.email }, { username: user.username }],
     });
 
     if (existingUser) {
       return {
-        error: existingUser.email === user.email
-          ? "Email already registered"
-          : "Username already taken"
+        error:
+          existingUser.email === user.email
+            ? "Email already registered"
+            : "Username already taken",
       };
     }
-    
+
     const newUser = await createUser({
       username: user.username,
       email: user.email,
-      password: user.password, 
+      password: user.password,
       role: "user",
       scanLimit: 10,
       usedScan: 0,
@@ -45,7 +47,7 @@ export async function addUser(user) {
         userId: newUser._id,
       },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: "7d" },
     );
 
     return {
@@ -59,14 +61,14 @@ export async function addUser(user) {
         role: newUser.role,
         scanLimit: newUser.scanLimit,
         usedScan: 0,
-      }
+      },
     };
   } catch (error) {
     return { error: error.message };
   }
 }
 
-// Login handler with cookie 
+// Login handler with cookie
 export async function loginUser(req, res) {
   try {
     const { email, password, emailOrUsername } = req.body;
@@ -98,16 +100,16 @@ export async function loginUser(req, res) {
         userId: result.user._id,
       },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: "7d" },
     );
 
     // Set cookie
-    res.cookie('token', token, {
+    res.cookie("token", token, {
       httpOnly: true,
       secure: true,
-      sameSite: 'none', 
+      sameSite: "none",
       maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: '/'
+      path: "/",
     });
 
     console.log("Login successful for:", result.user.username);
@@ -149,12 +151,13 @@ export async function signupUser(req, res) {
     //  Verify email existence with API
     console.log(`Verifying email: ${email}`);
     const isEmailValid = await verifyEmailExistence(email);
-    
+
     if (!isEmailValid) {
       console.log(`Email verification failed for: ${email}`);
       return res.status(400).json({
         success: false,
-        error: "Please provide a valid, deliverable email address. Temporary/disposable emails are not allowed.",
+        error:
+          "Please provide a valid, deliverable email address. Temporary/disposable emails are not allowed.",
       });
     }
 
@@ -165,12 +168,13 @@ export async function signupUser(req, res) {
     if (existingUser) {
       return res.status(409).json({
         success: false,
-        error: existingUser.email === email
-          ? "Email already registered"
-          : "Username already taken",
+        error:
+          existingUser.email === email
+            ? "Email already registered"
+            : "Username already taken",
       });
     }
-    
+
     const newUser = await createUser({
       username,
       email,
@@ -187,19 +191,19 @@ export async function signupUser(req, res) {
         username: newUser.username,
         email: newUser.email,
         role: newUser.role,
-        userId: newUser._id, 
+        userId: newUser._id,
       },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: "7d" },
     );
-    
+
     // Set cookie
-    res.cookie('token', token, {
+    res.cookie("token", token, {
       httpOnly: true,
-      secure: true, 
-      sameSite: 'none', 
+      secure: true,
+      sameSite: "none",
       maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: '/'
+      path: "/",
     });
 
     console.log("Signup successful for:", newUser.username);
@@ -217,7 +221,7 @@ export async function signupUser(req, res) {
         scanLimit: newUser.scanLimit,
         usedScan: 0,
       },
-      token: token, 
+      token: token,
     });
   } catch (error) {
     console.error("Signup error:", error.message);
@@ -238,7 +242,6 @@ export async function logoutUser(req, res) {
       secure: true,
       sameSite: "none",
       path: "/",
-      // domain: ".webshield.tech", // ADDED DOMAIN
     });
 
     console.log("Logout successful");
@@ -287,7 +290,7 @@ export async function getUserProfile(req, res) {
         scanLimit: user.scanLimit,
         usedScan: user.usedScan || 0,
         createdAt: user.createdAt,
-        agreedToTerms: user.agreedToTerms, 
+        agreedToTerms: user.agreedToTerms,
       },
     });
   } catch (error) {

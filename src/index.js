@@ -12,66 +12,70 @@ dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 4000;
-app.set('trust proxy', 1);
+app.set("trust proxy", 1);
 
 // CORS configuration
 const allowedOrigins = [
-  'http://localhost:5173', 
-  'https://webshield.tech', 
-  'https://www.webshield.tech', 
-  'https://webshield-frontend.vercel.app',
-  'https://webshield.tech/signup', 
-  'https://webshield.tech/login',
- 
-  process.env.FRONTEND_URL 
+  "http://localhost:5173",
+  "https://webshield.tech",
+  "https://www.webshield.tech",
+  "https://webshield-frontend.vercel.app",
+  "https://webshield.tech/signup",
+  "https://webshield.tech/login",
+
+  process.env.FRONTEND_URL,
 ].filter(Boolean);
 
-console.log('Allowed origins:', allowedOrigins);
+console.log("Allowed origins:", allowedOrigins);
 
-// Debug middleware - ADD THIS
+// Debug middleware
 app.use((req, res, next) => {
   console.log(`\n=== REQUEST ${req.method} ${req.url} ===`);
-  console.log('Origin:', req.headers.origin);
-  console.log('Host:', req.headers.host);
-  console.log('Cookies:', req.cookies);
-  console.log('=====================\n');
+  console.log("Origin:", req.headers.origin);
+  console.log("Host:", req.headers.host);
+  console.log("Cookies:", req.cookies);
+  console.log("=====================\n");
   next();
 });
 
 // Create CORS options
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps, curl requests)
     if (!origin) {
-      console.log('No origin header, allowing request');
+      console.log("No origin header, allowing request");
       return callback(null, true);
     }
-    
+
     // Check if origin is in allowed origins
     if (allowedOrigins.includes(origin)) {
-      console.log('Origin allowed:', origin);
+      console.log("Origin allowed:", origin);
       return callback(null, true);
     }
-    
+
     // Allow all vercel.app subdomains (for preview deployments)
-    if (origin.includes('.vercel.app')) {
-      console.log('Vercel origin allowed:', origin);
+    if (origin.includes(".vercel.app")) {
+      console.log("Vercel origin allowed:", origin);
       return callback(null, true);
     }
-    
+
     // Allow all railway.app subdomains (for backend)
-    if (origin.includes('.railway.app')) {
-      console.log('Railway origin allowed:', origin);
+    if (origin.includes(".railway.app")) {
+      console.log("Railway origin allowed:", origin);
       return callback(null, true);
     }
-    
-    console.log('CORS blocked origin:', origin);
-    return callback(new Error('Not allowed by CORS'), false);
+
+    console.log("CORS blocked origin:", origin);
+    return callback(new Error("Not allowed by CORS"), false);
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'X-Requested-With'],
-  exposedHeaders: ['Set-Cookie']
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "Cookie",
+    "X-Requested-With",
+  ],
+  exposedHeaders: ["Set-Cookie"],
 };
 
 // Apply CORS to all routes
@@ -80,23 +84,30 @@ app.use(cors(corsOptions));
 // Handle OPTIONS preflight requests separately
 app.options(/.*/, (req, res) => {
   const origin = req.headers.origin;
-  
-  console.log('OPTIONS preflight request from:', origin);
-  
+
+  console.log("OPTIONS preflight request from:", origin);
+
   if (origin) {
     // Check if origin is allowed
-    const isAllowed = allowedOrigins.includes(origin) || 
-                      origin.includes('.vercel.app') || 
-                      origin.includes('.railway.app');
-    
+    const isAllowed =
+      allowedOrigins.includes(origin) ||
+      origin.includes(".vercel.app") ||
+      origin.includes(".railway.app");
+
     if (isAllowed) {
-      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader("Access-Control-Allow-Origin", origin);
     }
   }
-  
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cookie, X-Requested-With');
+
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET, POST, PUT, DELETE, OPTIONS, PATCH",
+  );
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, Cookie, X-Requested-With",
+  );
   res.sendStatus(200);
 });
 
@@ -115,26 +126,26 @@ app.use("/admin", adminRouter);
 
 // Health check routes
 app.get("/", (req, res) => {
-  res.json({ 
+  res.json({
     message: "WebShield Backend server is running",
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || "development",
   });
 });
 
 app.get("/health", (req, res) => {
-  res.json({ 
-    status: "ok", 
+  res.json({
+    status: "ok",
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || "development",
   });
 });
 
 app.get("/api/health", (req, res) => {
-  res.json({ 
-    status: "ok", 
+  res.json({
+    status: "ok",
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || "development",
   });
 });
 
@@ -145,31 +156,31 @@ app.use((req, res) => {
     success: false,
     error: "Route not found",
     path: req.url,
-    method: req.method
+    method: req.method,
   });
 });
 
 // Global error handler
 app.use((err, req, res, next) => {
   console.error("Global error:", err);
-  
+
   // Handle CORS errors specifically
-  if (err.message === 'Not allowed by CORS') {
+  if (err.message === "Not allowed by CORS") {
     return res.status(403).json({
       success: false,
       error: "CORS policy violation: Origin not allowed",
-      allowedOrigins: allowedOrigins
+      allowedOrigins: allowedOrigins,
     });
   }
-  
+
   res.status(500).json({
     success: false,
     error: "Internal server error",
-    message: process.env.NODE_ENV === 'development' ? err.message : undefined
+    message: process.env.NODE_ENV === "development" ? err.message : undefined,
   });
 });
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
-  console.log(`Allowed origins: ${allowedOrigins.join(', ')}`);
+  console.log(`Allowed origins: ${allowedOrigins.join(", ")}`);
 });

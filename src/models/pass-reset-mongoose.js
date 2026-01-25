@@ -1,4 +1,4 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
 
 const passResetSchema = new mongoose.Schema(
   {
@@ -25,9 +25,9 @@ const passResetSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 passResetSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
-export const passReset = mongoose.model('passwordReset', passResetSchema);
+export const passReset = mongoose.model("passwordReset", passResetSchema);
