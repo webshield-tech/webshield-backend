@@ -22,6 +22,7 @@ const allowedOrigins = [
   "https://webshield-frontend.vercel.app",
   "https://webshield.tech/signup",
   "https://webshield.tech/login",
+  "https://webshield-backend-e051bc08c935.herokuapp.com",
 
   process.env.FRONTEND_URL,
 ].filter(Boolean);
