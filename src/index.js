@@ -20,8 +20,6 @@ const allowedOrigins = [
   "https://webshield.tech",
   "https://www.webshield.tech",
   "https://webshield-frontend.vercel.app",
-  "https://webshield.tech/signup",
-  "https://webshield.tech/login",
   "https://webshield-backend-e051bc08c935.herokuapp.com",
 
   process.env.FRONTEND_URL,
@@ -60,7 +58,7 @@ const corsOptions = {
     }
 
     // Allow all railway.app subdomains (for backend)
-    if (origin.includes(".railway.app")) {
+    if (origin.includes(".herokuapp.com")) {
       console.log("Railway origin allowed:", origin);
       return callback(null, true);
     }
@@ -93,7 +91,7 @@ app.options(/.*/, (req, res) => {
     const isAllowed =
       allowedOrigins.includes(origin) ||
       origin.includes(".vercel.app") ||
-      origin.includes(".railway.app");
+      origin.includes(".herokuapp.com");
 
     if (isAllowed) {
       res.setHeader("Access-Control-Allow-Origin", origin);
