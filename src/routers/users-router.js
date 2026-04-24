@@ -14,6 +14,18 @@ dotenv.config();
 
 const userRouter = express.Router();
 
+function getCookieOptions() {
+  const isProduction = process.env.NODE_ENV === "production";
+  return {
+    httpOnly: true,
+    secure: isProduction,
+    // Cross-site frontend/backend deployments need SameSite=None in production.
+    sameSite: isProduction ? "none" : "lax",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    path: "/",
+  };
+}
+
 // SIGNUP ROUTE
 userRouter.post("/signup", signUpValidation, async (req, res) => {
   try {
@@ -73,14 +85,7 @@ userRouter.post("/login", loginValidation,loginLimiter, async (req, res) => {
       });
     }
 
-const isProduction = process.env.NODE_ENV === 'production';
-const cookieOptions = {
-  httpOnly: true,
-  secure: isProduction, 
-  sameSite: isProduction ? 'strict' : 'lax', 
-  maxAge: 7 * 24 * 60 * 60 * 1000,
-  path: "/",
-};
+const cookieOptions = getCookieOptions();
     res.cookie("token", response.token, cookieOptions);
 
     console.log("Login successful");
@@ -93,6 +98,7 @@ const cookieOptions = {
     res.json({
       success: true,
       message: "Logged in successfully",
+      token: response.token,
       user: {
         _id: response.user._id || response.user.userId,
         userId: response.user.userId || response.user._id,
@@ -156,13 +162,7 @@ userRouter.post('/logout', async (req, res) => {
     console.log('[Logout] Clearing cookie');
     
     
-   const isProduction = process.env.NODE_ENV === 'production';
-res.clearCookie('token', {
-  httpOnly: true,
-  secure: isProduction,
-  sameSite: isProduction ? 'strict' : 'lax',
-  path: '/',
-});
+res.clearCookie('token', getCookieOptions());
 
     res.json({
       success: true,

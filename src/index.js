@@ -17,19 +17,22 @@ dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 4000;
-// This logic will now allow any of your domains to connect
+const configuredFrontendUrl = process.env.FRONTEND_URL;
 const allowedOrigins = [
   "https://www.webshield.tech",
   "https://webshield.tech",
   "https://webshield-frontend.vercel.app",
-  "http://localhost:5173"
-];
+  "http://localhost:5173",
+  configuredFrontendUrl,
+].filter(Boolean);
+
+const webshieldDomainPattern = /^https:\/\/([a-z0-9-]+\.)?webshield\.tech$/i;
 app.use(
   cors({
     origin: function (origin, callback) {
       // Allow requests with no origin (like mobile apps or curl)
       if (!origin) return callback(null, true);
-      if (allowedOrigins.indexOf(origin) === -1) {
+      if (!allowedOrigins.includes(origin) && !webshieldDomainPattern.test(origin)) {
         return callback(new Error("CORS blocked"), false);
       }
       return callback(null, true);
