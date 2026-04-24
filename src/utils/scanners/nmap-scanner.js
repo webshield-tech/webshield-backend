@@ -14,6 +14,13 @@ function shouldEnableNmapOsDetection() {
   return false;
 }
 
+function isRunningAsRoot() {
+  if (typeof process.getuid === "function") {
+    return process.getuid() === 0;
+  }
+  return false;
+}
+
 export async function scanWithNmap(targetUrl) {
   try {
     console.log('Starting Nmap Scan for:  ', targetUrl);
@@ -31,9 +38,12 @@ export async function scanWithNmap(targetUrl) {
 
     console.log('start scanning nmap for', hostname);
 
-    // Avoid forcing -O unless process has privileges or env explicitly enables it.
-    const osDetectionFlag = shouldEnableNmapOsDetection() ? " -O" : "";
-    const command = `timeout 180 nmap -Pn -T4 -sV -sC${osDetectionFlag} -v --top-ports 1000 --max-retries 1 --host-timeout 240s ${hostname}`;
+    // For capability-based non-root runs, nmap needs --privileged for -O.
+    let osDetectionFlags = "";
+    if (shouldEnableNmapOsDetection()) {
+      osDetectionFlags = isRunningAsRoot() ? " -O" : " --privileged -O";
+    }
+    const command = `timeout 180 nmap -Pn -T4 -sV -sC${osDetectionFlags} -v --top-ports 1000 --max-retries 1 --host-timeout 240s ${hostname}`;
 
     console.log('Running Nmap command:', command);
 

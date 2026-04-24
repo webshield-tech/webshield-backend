@@ -38,6 +38,13 @@ function shouldEnableNmapOsDetection() {
   return false;
 }
 
+function isRunningAsRoot() {
+  if (typeof process.getuid === "function") {
+    return process.getuid() === 0;
+  }
+  return false;
+}
+
 function getScanCommand(scanType, finalUrl) {
   const hostname = resolveHostname(finalUrl);
 
@@ -58,7 +65,8 @@ function getScanCommand(scanType, finalUrl) {
     ];
 
     if (shouldEnableNmapOsDetection()) {
-      args.splice(4, 0, "-O");
+      const osFlags = isRunningAsRoot() ? ["-O"] : ["--privileged", "-O"];
+      args.splice(4, 0, ...osFlags);
     }
 
     return {

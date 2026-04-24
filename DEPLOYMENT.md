@@ -64,6 +64,11 @@ NMAP_ENABLE_OS_DETECTION=false
 ```
 *Press `Ctrl+O`, `Enter`, then `Ctrl+X` to save and exit.*
 
+If you enable `NMAP_ENABLE_OS_DETECTION=true` on a non-root PM2 process, grant Nmap capabilities once:
+```bash
+sudo setcap cap_net_raw,cap_net_admin=eip "$(command -v nmap)"
+```
+
 ---
 
 ## 4. Launch with PM2
