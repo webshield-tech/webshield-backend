@@ -3,6 +3,17 @@ import { aiReport } from "../utils/aiReport.js";
 import { Scan } from "../models/scans-mongoose.js";
 
 const MAX_PROMPT_CHARS = 20000;
+const SUPPORTED_REPORT_LANGUAGES = new Set([
+  "english",
+  "urdu",
+  "hindi",
+  "arabic",
+]);
+
+function normalizeReportLanguage(value) {
+  const lang = String(value || "english").trim().toLowerCase();
+  return SUPPORTED_REPORT_LANGUAGES.has(lang) ? lang : "english";
+}
 
 function ensureNmapStructuredFromRaw(scan) {
   if (!scan || scan.scanType !== "nmap" || !scan.results) return;
@@ -79,7 +90,7 @@ function buildSummaryText(scan) {
   return text;
 }
 
-function buildReportContent(scan, aiText) {
+function buildReportContent(scan, aiText, language = "english") {
   const content = `
 VULN SPECTRA SECURITY SCAN REPORT
 
@@ -91,6 +102,7 @@ Scan Type     : ${String(scan.scanType).toUpperCase()}
 Scan Date     : ${new Date(scan.createdAt).toLocaleString()}
 Report Date   : ${new Date().toLocaleString()}
 Status        : ${String(scan.status).toUpperCase()}
+Language      : ${language}
 
 AI Security Analysis
 ----------------------
@@ -111,41 +123,65 @@ Report ID: ${scan._id}
   return content.replace(/WebShield/gi, "Vuln Spectra");
 }
 
+async function ensureReportForLanguage(scan, language) {
+  const requestedLanguage = normalizeReportLanguage(language);
+  const existingLanguage = normalizeReportLanguage(scan.reportLanguage);
+
+  if (
+    scan.reportContent &&
+    !scan.reportContent.includes("WebShield") &&
+    existingLanguage === requestedLanguage
+  ) {
+    return { reused: true, language: requestedLanguage };
+  }
+
+  try {
+    ensureNmapStructuredFromRaw(scan);
+    scan.markModified("results");
+  } catch (e) {
+    console.warn("Fallback parse failed", e);
+  }
+
+  let summaryText = buildSummaryText(scan);
+  if (summaryText.length > MAX_PROMPT_CHARS) {
+    summaryText = summaryText.slice(0, MAX_PROMPT_CHARS);
+  }
+
+  const aiText = await aiReport(summaryText, requestedLanguage);
+  scan.reportContent = buildReportContent(scan, aiText, requestedLanguage);
+  scan.reportGeneratedAt = new Date();
+  scan.reportLanguage = requestedLanguage;
+  await scan.save();
+
+  return { reused: false, language: requestedLanguage };
+}
+
 export const generateAIReportForScan = async (req, res) => {
   try {
     const scanId = req.params.id;
     const userId = req.user?.userId || req.userId;
+    const requestedLanguage = normalizeReportLanguage(req.body?.language);
     const scan = await Scan.findOne({ _id: scanId, userId });
 
     if (!scan) return res.status(404).json({ success: false, error: "Scan not found" });
     if (scan.status !== "completed") return res.status(400).json({ success: false, error: "Scan not completed" });
 
-    // Re-generate if report is missing OR if it contains old branding
-    if (scan.reportContent && !scan.reportContent.includes("WebShield")) {
+    const ensured = await ensureReportForLanguage(scan, requestedLanguage);
+    if (ensured.reused) {
       return res.json({
         success: true,
         message: "Report already exists",
         reportGenerated: true,
         generatedAt: scan.reportGeneratedAt,
+        language: ensured.language,
         scanId: scan._id,
       });
     }
 
-    try {
-      ensureNmapStructuredFromRaw(scan);
-      scan.markModified("results");
-    } catch (e) { console.warn("Fallback parse failed", e); }
-
-    let summaryText = buildSummaryText(scan);
-    const aiText = await aiReport(summaryText);
-    
-    scan.reportContent = buildReportContent(scan, aiText);
-    scan.reportGeneratedAt = new Date();
-    await scan.save();
-
     res.json({
       success: true,
       message: "Report generated successfully",
+      language: ensured.language,
       scanId: scan._id,
     });
   } catch (err) {
@@ -158,10 +194,13 @@ export const downloadReport = async (req, res) => {
   try {
     const scanId = req.params.id;
     const userId = req.user?.userId || req.userId;
+    const requestedLanguage = normalizeReportLanguage(req.query?.language);
     const scan = await Scan.findOne({ _id: scanId, userId });
     
     if (!scan) return res.status(404).json({ success: false, error: "Scan not found" });
-    if (!scan.reportContent) return res.status(404).json({ success: false, message: "Report not ready. Please generate it first." });
+    if (scan.status !== "completed") return res.status(400).json({ success: false, error: "Scan not completed" });
+
+    await ensureReportForLanguage(scan, requestedLanguage);
 
     res.json({
       success: true,
@@ -169,6 +208,7 @@ export const downloadReport = async (req, res) => {
         scanId: scan._id,
         targetUrl: scan.targetUrl,
         scanType: scan.scanType,
+        language: normalizeReportLanguage(scan.reportLanguage),
         content: scan.reportContent,
       },
     });
@@ -181,13 +221,20 @@ export const viewReport = async (req, res) => {
   try {
     const scanId = req.params.id;
     const userId = req.user?.userId || req.userId;
+    const requestedLanguage = normalizeReportLanguage(req.query?.language);
     const scan = await Scan.findOne({ _id: scanId, userId });
     
-    if (!scan || !scan.reportContent) return res.status(404).json({ success: false, error: "Report not found" });
+    if (!scan) return res.status(404).json({ success: false, error: "Scan not found" });
+    if (scan.status !== "completed") return res.status(400).json({ success: false, error: "Scan not completed" });
+
+    await ensureReportForLanguage(scan, requestedLanguage);
 
     res.json({
       success: true,
-      report: { content: scan.reportContent },
+      report: {
+        language: normalizeReportLanguage(scan.reportLanguage),
+        content: scan.reportContent,
+      },
     });
   } catch (err) {
     res.status(500).json({ success: false, error: "View failed" });

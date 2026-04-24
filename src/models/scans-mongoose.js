@@ -33,6 +33,14 @@ const scanSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    reportLanguage: {
+      type: String,
+      default: "english",
+    },
+    quotaRefunded: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,

@@ -92,6 +92,10 @@ export function parseNikto(rawOutput = "", target = "") {
   // Check if scan completed successfully (has Start Time and End Time)
   const hasStartTime = out.includes("Start Time:");
   const hasEndTime = out.includes("End Time:");
+  const testedHostsMatch = out.match(/(\d+)\s+host\(s\)\s+tested/i);
+  const testedHosts = testedHostsMatch ? Number(testedHostsMatch[1]) : null;
+  const looksLikeNiktoRun =
+    /Nikto v|Target Hostname:|Target IP:|Start Time:/i.test(out);
   const scanCompleted = hasStartTime && hasEndTime;
 
   // Extract statistics
@@ -151,8 +155,11 @@ export function parseNikto(rawOutput = "", target = "") {
     }
   }
 
-  // Success means scan completed (even if no findings)
-  const success = scanCompleted;
+  // Consider it successful when nikto actually ran against at least one host,
+  // even if it found zero issues.
+  const success =
+    (scanCompleted || looksLikeNiktoRun) &&
+    (testedHosts === null || testedHosts > 0);
 
   return {
     tool: "nikto",

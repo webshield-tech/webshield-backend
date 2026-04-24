@@ -6,7 +6,6 @@ import cookieParser from "cookie-parser";
 import scanRouter from "./routers/scans-router.js";
 import authRouter from "./routers/auth-router.js";
 import adminRouter from "./routers/admin-router.js";
-import osintRouter from "./routers/osint-router.js";
 import exploitRouter from "./routers/exploit-router.js";
 import cors from "cors";
 
@@ -70,7 +69,6 @@ app.use("/user", userRouter);
 app.use("/scan", scanRouter);
 app.use("/auth", authRouter);
 app.use("/admin", adminRouter);
-app.use("/api/osint", osintRouter);
 app.use("/api/exploit", exploitRouter);
 
 app.get("/", (req, res) => {

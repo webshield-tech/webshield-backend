@@ -1,6 +1,7 @@
 import { spawn } from "child_process";
 import { Scan } from "../models/scans-mongoose.js";
 import { parseByTool } from "./scan-parsers.js";
+import { refundFailedScanQuota } from "./scan-quota.js";
 
 const processes = new Map();
 
@@ -135,6 +136,10 @@ export async function startProcess(scanId, executable, args = [], opts = {}) {
           updatedAt: new Date(),
           completedAt: new Date(),
         });
+
+        if (status === "failed") {
+          await refundFailedScanQuota(scanId);
+        }
       } catch (dbErr) {
         console.error("[scan-runner] DB update error on close:", dbErr);
         try {
@@ -149,6 +154,7 @@ export async function startProcess(scanId, executable, args = [], opts = {}) {
             updatedAt: new Date(),
             completedAt: new Date(),
           });
+          await refundFailedScanQuota(scanId);
         } catch (finalErr) {
           console.error("[scan-runner] Final DB update error:", finalErr);
         }
@@ -172,6 +178,7 @@ export async function startProcess(scanId, executable, args = [], opts = {}) {
           updatedAt: new Date(),
           completedAt: new Date(),
         });
+        await refundFailedScanQuota(scanId);
       } catch (dbErr) {
         console.error("[scan-runner] DB update error on spawn error:", dbErr);
       }

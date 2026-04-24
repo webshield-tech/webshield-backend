@@ -6,7 +6,14 @@ const groq = new Groq({
   apiKey: process.env.GROQ_API,
 });
 
-export async function aiReport(summaryText) {
+function normalizeLanguage(language) {
+  const value = String(language || "english").trim().toLowerCase();
+  if (["urdu", "hindi", "arabic", "english"].includes(value)) return value;
+  return "english";
+}
+
+export async function aiReport(summaryText, language = "english") {
+  const normalizedLanguage = normalizeLanguage(language);
   try {
     const response = await groq.chat.completions.create({
       model: 'llama-3.1-8b-instant',
@@ -24,6 +31,8 @@ RULES:
 6. Base all analysis ONLY on the provided scan data
 7. If data is missing, explain why (e.g., "OS detection failed - likely due to firewall/IDS blocking scans") instead of guessing
 8. Highlight overall safety: "Overall, this site appears safe/unsafe because..."
+9. Keep wording very simple and short so non-technical users can understand.
+10. Write the full report in this language: ${normalizedLanguage}
 
 IMPORTANT: Look at the "ACTUAL SCAN DATA" and diagnostics, then provide safe/unsafe insights with reasons.`,
         },

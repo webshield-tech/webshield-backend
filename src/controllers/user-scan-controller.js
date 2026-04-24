@@ -6,6 +6,7 @@ import {
   killProcess,
   hasProcess,
 } from "../services/scan-runner.js";
+import { refundFailedScanQuota } from "../services/scan-quota.js";
 import { validateHostname } from "../utils/validations/hostname-validation.js";
 import { urlValidation } from "../utils/validations/url-validation.js";
 
@@ -81,9 +82,7 @@ function getScanCommand(scanType, finalUrl) {
       executable: "nikto",
       args: [
         "-h",
-        hostname,
-        "-port",
-        "80",
+        finalUrl,
         "-Tuning",
         "b",
         "-maxtime",
@@ -157,6 +156,7 @@ async function launchScanInBackground(scanId, finalUrl, scanType) {
       updatedAt: new Date(),
       completedAt: new Date(),
     });
+    await refundFailedScanQuota(scanId);
   }
 }
 
@@ -177,7 +177,7 @@ async function checkScanQuota(userId, requestedScans) {
     return {
       ok: false,
       code: 403,
-      error: `Scan limit exceeded. Remaining scans: ${remaining}`,
+      error: `Daily scan limit reached (${limit}). Buy Premium to run more scans.`,
       remaining,
       scanLimit: limit,
       usedScan: used,

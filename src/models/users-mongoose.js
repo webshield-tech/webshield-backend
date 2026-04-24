@@ -28,7 +28,7 @@ const userSchema = new mongoose.Schema(
     },
     scanLimit: {
       type: Number,
-      default: 15,
+      default: 10,
     },
     usedScan: {
       type: Number,
