@@ -18,30 +18,44 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 4000;
 const configuredFrontendUrl = process.env.FRONTEND_URL;
+const allowAllCors = String(process.env.CORS_ALLOW_ALL || "").toLowerCase() === "true";
+const envAllowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
 const allowedOrigins = [
   "https://www.webshield.tech",
   "https://webshield.tech",
   "https://webshield-frontend.vercel.app",
   "http://localhost:5173",
   configuredFrontendUrl,
+  ...envAllowedOrigins,
 ].filter(Boolean);
 
 const webshieldDomainPattern = /^https:\/\/([a-z0-9-]+\.)?webshield\.tech$/i;
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      // Allow requests with no origin (like mobile apps or curl)
-      if (!origin) return callback(null, true);
-      if (!allowedOrigins.includes(origin) && !webshieldDomainPattern.test(origin)) {
-        return callback(new Error("CORS blocked"), false);
-      }
+const corsOptions = {
+  origin(origin, callback) {
+    // Allow non-browser calls (curl, health checks)
+    if (!origin) return callback(null, true);
+
+    if (allowAllCors) {
       return callback(null, true);
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "Cookie"],
-  })
-);
+    }
+
+    if (allowedOrigins.includes(origin) || webshieldDomainPattern.test(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`CORS blocked for origin: ${origin}`), false);
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "Cookie"],
+};
+
+app.use(cors(corsOptions));
+app.options(/.*/, cors(corsOptions));
 
 app.use(cookieParser());
 
@@ -74,6 +88,7 @@ app.use((err, req, res, next) => {
 const server = app.listen(port, () => {
   console.log(`Server running on port ${port}`);
   console.log(`Allowed Frontend: ${process.env.FRONTEND_URL || "Not configured"}`);
+  console.log(`CORS allow all: ${allowAllCors ? "enabled" : "disabled"}`);
   console.log(
     `Database:  ${process.env.DB_URL ? "Configured" : "Not configured"}`
   );
