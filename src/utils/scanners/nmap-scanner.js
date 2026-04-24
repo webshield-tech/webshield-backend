@@ -2,6 +2,18 @@ import { promisify } from "util";
 import { exec } from "child_process";
 const execAsync = promisify(exec);
 
+function shouldEnableNmapOsDetection() {
+  const forceEnable = String(process.env.NMAP_ENABLE_OS_DETECTION || "")
+    .trim()
+    .toLowerCase();
+  if (["1", "true", "yes", "on"].includes(forceEnable)) return true;
+
+  if (typeof process.getuid === "function") {
+    return process.getuid() === 0;
+  }
+  return false;
+}
+
 export async function scanWithNmap(targetUrl) {
   try {
     console.log('Starting Nmap Scan for:  ', targetUrl);
@@ -19,8 +31,9 @@ export async function scanWithNmap(targetUrl) {
 
     console.log('start scanning nmap for', hostname);
 
-    // Simple Nmap command (similar to your original)
-    const command = `timeout 180 nmap -Pn -T4 -sV -sC -O -v --top-ports 1000 --max-retries 1 --host-timeout 240s ${hostname}`;
+    // Avoid forcing -O unless process has privileges or env explicitly enables it.
+    const osDetectionFlag = shouldEnableNmapOsDetection() ? " -O" : "";
+    const command = `timeout 180 nmap -Pn -T4 -sV -sC${osDetectionFlag} -v --top-ports 1000 --max-retries 1 --host-timeout 240s ${hostname}`;
 
     console.log('Running Nmap command:', command);
 

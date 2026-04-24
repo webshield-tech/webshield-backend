@@ -57,6 +57,10 @@ FRONTEND_URL=https://your-frontend.vercel.app
 # Email settings (for password resets)
 EMAIL_USER=...
 EMAIL_PASS=...
+
+# Optional: enable only if backend runs with required nmap privileges
+# (root user or proper Linux capabilities)
+NMAP_ENABLE_OS_DETECTION=false
 ```
 *Press `Ctrl+O`, `Enter`, then `Ctrl+X` to save and exit.*
 

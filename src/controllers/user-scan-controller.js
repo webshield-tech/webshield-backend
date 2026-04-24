@@ -26,27 +26,44 @@ function resolveHostname(url) {
   return hostname;
 }
 
+function shouldEnableNmapOsDetection() {
+  const forceEnable = String(process.env.NMAP_ENABLE_OS_DETECTION || "")
+    .trim()
+    .toLowerCase();
+  if (["1", "true", "yes", "on"].includes(forceEnable)) return true;
+
+  if (typeof process.getuid === "function") {
+    return process.getuid() === 0;
+  }
+  return false;
+}
+
 function getScanCommand(scanType, finalUrl) {
   const hostname = resolveHostname(finalUrl);
 
   if (scanType === "nmap") {
+    const args = [
+      "-Pn",
+      "-T4",
+      "-sV",
+      "-sC",
+      "-v",
+      "--top-ports",
+      "1000",
+      "--max-retries",
+      "1",
+      "--host-timeout",
+      "240s",
+      hostname,
+    ];
+
+    if (shouldEnableNmapOsDetection()) {
+      args.splice(4, 0, "-O");
+    }
+
     return {
       executable: "nmap",
-      args: [
-        "-Pn",
-        "-T4",
-        "-sV",
-        "-sC",
-        "-O",
-        "-v",
-        "--top-ports",
-        "1000",
-        "--max-retries",
-        "1",
-        "--host-timeout",
-        "240s",
-        hostname,
-      ],
+      args,
       opts: { timeoutMs: 360000, maxRaw: 400000 },
     };
   }
