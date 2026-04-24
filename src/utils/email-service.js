@@ -6,18 +6,11 @@ dotenv.config();
 const emailUser = process.env.EMAIL_USER;
 const emailPass = process.env.EMAIL_PASSWORD;
 
-// CHECK CREDENTIALS ON STARTUP (EXIT IF MISSING)
+// CHECK CREDENTIALS ON STARTUP
 if (!emailUser || !emailPass) {
   console.error(' FATAL:  Email credentials are missing');
   console.error('Please add EMAIL_USER and EMAIL_PASSWORD to your .env file');
-
-  // Only exit in production (allow development without email)
-  if (process.env.NODE_ENV === 'production') {
-    console.error('Cannot start server without email credentials in production');
-    process.exit(1);
-  } else {
-    console.warn(' WARNING: Email service will not work.  Add credentials to .env');
-  }
+  console.warn(' WARNING: Email service will not work. Password resets will be disabled.');
 }
 
 // CREATE TRANSPORTER
@@ -33,14 +26,7 @@ const transporter = nodemailer.createTransport({
 transporter.verify(function (error, success) {
   if (error) {
     console.error('Email transporter error:', error.message);
-
-    // Exit in production if email is broken
-    if (process.env.NODE_ENV === 'production') {
-      console.error('Cannot start server with broken email service in production');
-      process.exit(1);
-    } else {
-      console.warn("Email service verification failed. Password reset won't work.");
-    }
+    console.warn("Email service verification failed. Password reset won't work.");
   } else {
     console.log('Email transporter is ready');
   }
