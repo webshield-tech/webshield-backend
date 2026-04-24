@@ -4,15 +4,16 @@ import dotenv from "dotenv";
 dotenv.config();
 
 export async function checkAuth(req, res, next) {
-  console.log("AUTH CHECK");
-  console.log("Cookies received:", Object.keys(req.cookies || {}));
-  console.log("Has token:", !!req.cookies?.token);
+  const cookies = req.cookies || {};
+  let token = cookies.token;
 
-  const cookies = req.cookies;
+  // Fallback to Authorization header if cookie is missing
+  if (!token && req.headers.authorization && req.headers.authorization.startsWith("Bearer ")) {
+    token = req.headers.authorization.split(" ")[1];
+  }
 
   // Check if token exists
-  if (!cookies.token) {
-    console.log("No token found in cookies");
+  if (!token) {
     return res.status(401).json({
       success: false,
       error: "You are not logged in",
@@ -21,17 +22,29 @@ export async function checkAuth(req, res, next) {
 
   try {
     // Verify JWT token
-    const decoded = jwt.verify(cookies.token, process.env.JWT_SECRET);
-    console.log("User Verified:", decoded.username, "| Role:", decoded.role);
+    if (!process.env.JWT_SECRET) {
+      return res.status(500).json({
+        success: false,
+        error: "Server authentication is not configured",
+      });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     // Normalize user object and id for all controllers
     req.user = decoded;
     req.userId = decoded.userId || decoded.id || decoded._id;
-    console.log("req.userId set to:", req.userId);
+
+    if (!req.userId) {
+      return res.status(401).json({
+        success: false,
+        error: "Invalid session token",
+      });
+    }
 
     next();
   } catch (error) {
-    console.log("Token verification failed:", error.message);
+    console.log("Token verification failed");
 
     // Handle token expiration
     if (error.name === "TokenExpiredError") {

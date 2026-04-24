@@ -160,6 +160,46 @@ export async function upgradeUserScan(req, res) {
   }
 }
 
+// TOGGLE USER BLOCK STATUS (FOR ADMIN)
+export async function toggleUserBlock(req, res) {
+  try {
+    const { userId } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ success: false, error: "User ID is required" });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, error: "User not found" });
+    }
+
+    // Don't let admins block themselves or other admins
+    if (user.role === "admin") {
+      return res.status(403).json({ success: false, error: "Cannot block an admin user" });
+    }
+
+    user.isBlocked = !user.isBlocked;
+    await user.save();
+
+    return res.json({
+      success: true,
+      message: user.isBlocked ? "User has been blocked successfully." : "User has been unblocked successfully.",
+      user: {
+        userId: user._id,
+        username: user.username,
+        isBlocked: user.isBlocked
+      }
+    });
+  } catch (error) {
+    console.error("[admin] toggleUserBlock error:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || "Failed to toggle user block status",
+    });
+  }
+}
+
 /* ADMIN STATS */
 export async function getAdminStats(req, res) {
   try {
@@ -173,8 +213,8 @@ export async function getAdminStats(req, res) {
     // Recent users and scans (limit to last 5 each to avoid huge payloads)
     const recentUsers = await User.find()
   .sort({ createdAt: -1 })
-  .limit(5)
-  .select("username email role createdAt")
+  .limit(20)
+  .select("username email role createdAt isBlocked")
   .lean();
 
     const recentScans = await Scan.find()

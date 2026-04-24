@@ -101,6 +101,7 @@ const cookieOptions = {
         role: response.user.role,
         scanLimit: response.user.scanLimit,
         usedScan: response.user.usedScan || 0,
+        agreedToTerms: response.user.agreedToTerms || false,
       },
     });
   } catch (error) {

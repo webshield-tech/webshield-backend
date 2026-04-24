@@ -37,6 +37,7 @@ const userSchema = new mongoose.Schema(
     agreedToTerms: { type: Boolean, default: false },
     termsAcceptedAt: { type: Date },
     termsAcceptedIP: { type: String },
+    isBlocked: { type: Boolean, default: false },
   },
   {
     timestamps: true,

@@ -5,6 +5,9 @@ import {
   getScanHistory,
   getScanResultsById,
   cancelScan,
+  getBatchResults,
+  startImpactDemo,
+  getImpactDemo,
 } from '../controllers/user-scan-controller.js';
 import {
   generateAIReportForScan,
@@ -17,8 +20,11 @@ scanRouter.use(checkAuth);
 
 scanRouter.post('/start', startScan);
 scanRouter.get('/history', getScanHistory);
+scanRouter.get('/batch/:batchId', getBatchResults);
 scanRouter.get('/:id', getScanResultsById);
 scanRouter.post('/:id/cancel', cancelScan);
+scanRouter.post('/:id/impact/start', startImpactDemo);
+scanRouter.get('/:id/impact', getImpactDemo);
 
 scanRouter.post('/:id/report/generate', generateAIReportForScan);
 scanRouter.get('/:id/report/download', downloadReport);

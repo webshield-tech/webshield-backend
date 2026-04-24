@@ -4,98 +4,99 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { verifyEmailExistence } from "../utils/email-verifier.js";
 
+function getCookieOptions() {
+  const isProduction = process.env.NODE_ENV === "production";
+  return {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? "strict" : "lax",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    path: "/",
+  };
+}
+
+export async function addUser(user) {
+  const { username, email, password } = user || {};
+
+  if (!username || !email || !password) {
+    return { error: "All fields are required" };
+  }
+
+  // Bypassed for development/competition demo to allow `.io` and fake emails
+  /*
+  const isEmailValid = await verifyEmailExistence(email);
+  if (!isEmailValid) {
+    return {
+      error:
+        "Please provide a valid, deliverable email address. Temporary/disposable emails are not allowed.",
+    };
+  }
+  */
+
+  const existingUser = await User.findOne({
+    $or: [{ email }, { username }],
+  }).lean();
+
+  if (existingUser) {
+    return {
+      error:
+        existingUser.email === email
+          ? "Email already registered"
+          : "Username already taken",
+    };
+  }
+
+  const newUser = await createUser({
+    username,
+    email,
+    password,
+    role: "user",
+    scanLimit: 10,
+    usedScan: 0,
+  });
+
+  return newUser;
+}
+
 export async function signupUser(req, res) {
   try {
-    const { username, email, password } = req.body;
+    const created = await addUser(req.body);
 
-    console.log("=== SIGNUP REQUEST ===");
-    console.log("Username:", username);
-    console.log("Email:", email);
-
-    // Validate input
-    if (!username || !email || !password) {
+    if (created.error) {
       return res.status(400).json({
         success: false,
-        error: "All fields are required",
+        error: created.error,
       });
     }
-
-    // Verify email existence with API
-    console.log(`Verifying email: ${email}`);
-    const isEmailValid = await verifyEmailExistence(email);
-
-    if (!isEmailValid) {
-      console.log(`Email verification failed for: ${email}`);
-      return res.status(400).json({
-        success: false,
-        error:
-          "Please provide a valid, deliverable email address. Temporary/disposable emails are not allowed.",
-      });
-    }
-
-    // Check if user already exists
-    const existingUser = await User.findOne({
-      $or: [{ email }, { username }],
-    });
-
-    if (existingUser) {
-      return res.status(409).json({
-        success: false,
-        error:
-          existingUser.email === email
-            ? "Email already registered"
-            : "Username already taken",
-      });
-    }
-
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Create user
-    const newUser = await createUser({
-      username,
-      email,
-      password: hashedPassword,
-      role: "user",
-      scanLimit: 10,
-      usedScan: 0,
-    });
 
     // Generate token
     const token = jwt.sign(
       {
-        username: newUser.username,
-        email: newUser.email,
-        role: newUser.role,
-        userId: newUser._id,
+        username: created.username,
+        email: created.email,
+        role: created.role,
+        userId: created._id,
       },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" },
+      { expiresIn: "7d" }
     );
 
-    // Set cookie
-    res.cookie("token", token, {
-      httpOnly: true,
-      secure: false,
-      sameSite: "lax",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: "/",
-    });
-
-    console.log("Signup successful, cookie set for:", newUser.username);
+    res.cookie("token", token, getCookieOptions());
 
     res.status(201).json({
       success: true,
       message: "User created successfully",
       user: {
-        _id: newUser._id,
-        userId: newUser._id,
-        username: newUser.username,
-        email: newUser.email,
-        role: newUser.role,
-        scanLimit: newUser.scanLimit,
+        _id: created._id,
+        userId: created._id,
+        username: created.username,
+        email: created.email,
+        role: created.role,
+        scanLimit: created.scanLimit,
         usedScan: 0,
+        agreedToTerms: created.agreedToTerms || false,
       },
+      token: token,
     });
   } catch (error) {
     console.error(" Signup error:", error);
@@ -106,7 +107,7 @@ export async function signupUser(req, res) {
   }
 }
 
-async function checkUser(user) {
+export async function checkUser(user) {
   try {
     const identifier = user.emailOrUsername || user.email || user.username;
     const password = user.password;
@@ -133,6 +134,13 @@ async function checkUser(user) {
       return {
         success: false,
         error: "User does not exist",
+      };
+    }
+
+    if (userExists.isBlocked) {
+      return {
+        success: false,
+        error: "ACCOUNT_SUSPENDED: Your access to Vuln Spectra has been revoked due to ethical violations.",
       };
     }
 
@@ -167,7 +175,8 @@ async function checkUser(user) {
         email: userExists.email,
         role: userExists.role,
         scanLimit: userExists.scanLimit,
-        usedScan: userExists.scanUsed || 0,
+        usedScan: userExists.usedScan || 0,
+        agreedToTerms: userExists.agreedToTerms || false,
       },
     };
   } catch (error) {
@@ -201,13 +210,7 @@ export async function loginUser(req, res) {
       });
     }
 
-    res.cookie("token", result.token, {
-      httpOnly: true,
-      secure: false,
-      sameSite: "lax",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: "/",
-    });
+    res.cookie("token", result.token, getCookieOptions());
 
     console.log(" Login successful, cookie set for:", result.user.username);
 
@@ -215,6 +218,7 @@ export async function loginUser(req, res) {
       success: true,
       message: result.message,
       user: result.user,
+      token: result.token,
     });
   } catch (error) {
     console.error(" Login error:", error);
@@ -229,12 +233,7 @@ export async function loginUser(req, res) {
 export async function logoutUser(req, res) {
   try {
     console.log("LOGOUT REQUEST");
-    res.clearCookie("token", {
-      httpOnly: true,
-      secure: false,
-      sameSite: "lax",
-      path: "/",
-    });
+    res.clearCookie("token", getCookieOptions());
     console.log("Logout successful");
     res.json({
       success: true,
@@ -273,6 +272,7 @@ export async function getUserProfile(req, res) {
         role: user.role,
         scanLimit: user.scanLimit,
         usedScan: user.usedScan || 0,
+        agreedToTerms: user.agreedToTerms || false,
         createdAt: user.createdAt,
       },
     });

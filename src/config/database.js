@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { killProcess } from "../services/scan-runner.js";
+import { killAllProcesses } from "../services/scan-runner.js";
 
 export async function connectDB() {
   if (!process.env.DB_URL) {
@@ -24,7 +24,7 @@ export async function connectDB() {
     const shutdown = async () => {
       console.log("SIGTERM/SIGINT received: shutting down gracefully");
       try {
-        const killed = await killProcess();
+        const killed = await killAllProcesses();
         console.log(`Killed ${killed} running scan processes`);
       } catch (e) {
         console.error("Error while killing processes during shutdown:", e);
@@ -38,8 +38,9 @@ export async function connectDB() {
     process.on("SIGTERM", shutdown);
 
     console.log("Database initialized");
+    return true;
   } catch (err) {
     console.error("Failed to connect to DB:", err);
-    process.exit(1);
+    return false;
   }
 }

@@ -63,9 +63,9 @@ export async function sendResetPassEmail(email, resetToken) {
     console.log('Reset link generated:', resetLink);
 
     const mailOptions = {
-      from: `"WebShield Security" <${emailUser}>`,
+      from: `"Vuln Spectra Security" <${emailUser}>`,
       to: email,
-      subject: 'Reset Your WebShield Password',
+      subject: 'Reset Your Vuln Spectra Password',
       html: `
         <!DOCTYPE html>
         <html>
@@ -78,7 +78,7 @@ export async function sendResetPassEmail(email, resetToken) {
             
             <!-- Header -->
             <div style="text-align: center; padding: 20px 0; border-bottom:  2px solid #00ff41;">
-              <h1 style="color: #0a0a0a; margin: 0; font-size: 28px;">🛡️ WebShield</h1>
+              <h1 style="color: #0a0a0a; margin: 0; font-size: 28px;">🛡️ Vuln Spectra</h1>
               <p style="color: #64748b; margin: 5px 0 0 0;">Security Scanner</p>
             </div>
 
@@ -91,7 +91,7 @@ export async function sendResetPassEmail(email, resetToken) {
               </p>
               
               <p style="color: #334155; font-size: 16px; line-height: 1.6;">
-                We received a request to reset your password for your <strong>WebShield Security Scanner</strong> account.
+                We received a request to reset your password for your <strong>Vuln Spectra Security Scanner</strong> account.
               </p>
 
               <!-- Button -->
@@ -142,7 +142,7 @@ export async function sendResetPassEmail(email, resetToken) {
               </p>
               
               <p style="color: #94a3b8; font-size: 12px; margin: 10px 0 0 0;">
-                <strong>WebShield Security Scanner</strong><br>
+                <strong>Vuln Spectra Security Scanner</strong><br>
                 Your Website Security Partner
               </p>
             </div>

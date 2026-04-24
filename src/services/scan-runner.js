@@ -156,11 +156,12 @@ export async function startProcess(scanId, executable, args = [], opts = {}) {
     });
 
     child.on("error", async (err) => {
+      const procEntry = processes.get(scanId);
       if (timeoutTimer) clearTimeout(timeoutTimer);
       if (logInterval) clearInterval(logInterval);
+      const mp = procEntry?.maxPartial || maxPartial;
       processes.delete(scanId);
       try {
-        const mp = processes.get(scanId)?.maxPartial || maxPartial;
         await Scan.findByIdAndUpdate(scanId, {
           status: "failed",
           results: {
