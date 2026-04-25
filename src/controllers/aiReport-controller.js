@@ -94,23 +94,17 @@ function buildReportContent(scan, aiText, language = "english") {
   const content = `
 VULN SPECTRA SECURITY SCAN REPORT
 
-Scan Information
+Scan Overview
 ----------------------
 Scan ID       : ${scan._id}
-Target URL    : ${scan.targetUrl}
-Scan Type     : ${String(scan.scanType).toUpperCase()}
-Scan Date     : ${new Date(scan.createdAt).toLocaleString()}
-Report Date   : ${new Date().toLocaleString()}
-Status        : ${String(scan.status).toUpperCase()}
+Target        : ${scan.targetUrl}
+Type          : ${String(scan.scanType).toUpperCase()}
+Date          : ${new Date(scan.createdAt).toLocaleString()}
 Language      : ${language}
 
-AI Security Analysis
+Security Analysis & Recommendations
 ----------------------
 ${aiText}
-
-Raw Scan Results Summary
-----------------------
-${buildSummaryText(scan)}
 
 END OF REPORT
 
@@ -119,7 +113,6 @@ Report ID: ${scan._id}
 © ${new Date().getFullYear()} Vuln Spectra
 `.trim();
 
-  // Final rebranding safety net
   return content.replace(/WebShield/gi, "Vuln Spectra");
 }
 

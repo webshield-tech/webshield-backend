@@ -46,50 +46,38 @@ function isRunningAsRoot() {
   return false;
 }
 
-function getScanCommand(scanType, finalUrl, cookies = "") {
+function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quick") {
   const hostname = resolveHostname(finalUrl);
 
   if (scanType === "nmap") {
-    const args = [
-      "-Pn",
-      "-T4",
-      "-sV",
-      "-sC",
-      "-v",
-      "--top-ports",
-      "1000",
-      "--max-retries",
-      "1",
-      "--host-timeout",
-      "240s",
-      hostname,
-    ];
+    let args = [];
+    if (scanMode === "full") {
+      args = ["-p-", "-sV", "-sC", "-v", "--max-retries", "1", "--host-timeout", "600s", hostname];
+    } else {
+      args = ["-F", "-sV", "-v", "--max-retries", "1", "--host-timeout", "240s", hostname];
+    }
 
     if (shouldEnableNmapOsDetection()) {
       const osFlags = isRunningAsRoot() ? ["-O"] : ["--privileged", "-O"];
-      args.splice(4, 0, ...osFlags);
+      args.splice(args.indexOf("-sV"), 0, ...osFlags);
     }
 
     return {
       executable: "nmap",
       args,
-      opts: { timeoutMs: 360000, maxRaw: 400000 },
+      opts: { timeoutMs: scanMode === "full" ? 900000 : 360000, maxRaw: 800000 },
     };
   }
 
   if (scanType === "nikto") {
+    let args = ["-h", finalUrl, "-maxtime", scanMode === "full" ? "300s" : "120s", "-nointeractive"];
+    if (scanMode === "quick") {
+      args.push("-Tuning", "x"); // Quick tuning
+    }
     return {
       executable: "nikto",
-      args: [
-        "-h",
-        finalUrl,
-        "-Tuning",
-        "b",
-        "-maxtime",
-        "120s",
-        "-nointeractive",
-      ],
-      opts: { timeoutMs: 180000 },
+      args,
+      opts: { timeoutMs: scanMode === "full" ? 360000 : 180000 },
     };
   }
 
@@ -102,20 +90,22 @@ function getScanCommand(scanType, finalUrl, cookies = "") {
   }
 
   if (scanType === "sqlmap") {
+    const level = scanMode === "full" ? "5" : "1";
+    const risk = scanMode === "full" ? "3" : "1";
     const args = [
       "-u",
       buildSqlmapTarget(finalUrl),
       "--batch",
       "--smart",
       "--level",
-      "5",
+      level,
       "--risk",
-      "3",
+      risk,
       "--threads",
       "3",
       "--forms",
       "--crawl",
-      "2",
+      scanMode === "full" ? "3" : "2",
       "--no-cast",
       "--disable-coloring",
     ];
@@ -127,23 +117,23 @@ function getScanCommand(scanType, finalUrl, cookies = "") {
     return {
       executable: "sqlmap",
       args,
-      opts: { timeoutMs: 185000, maxRaw: 300000 },
+      opts: { timeoutMs: scanMode === "full" ? 600000 : 185000, maxRaw: 500000 },
     };
   }
 
   throw new Error("Unsupported scan type");
 }
 
-function launchScanInBackground(scanId, finalUrl, scanType, cookies = "") {
+function launchScanInBackground(scanId, finalUrl, scanType, cookies = "", scanMode = "quick") {
   return new Promise(async (resolve) => {
     try {
       if (hasProcess(scanId)) {
         return resolve({ success: false, error: "Already running" });
       }
 
-      console.log(`[SCAN_SERVICE] Starting ${scanType} scan for: ${finalUrl} (ID: ${scanId})`);
+      console.log(`[SCAN_SERVICE] Starting ${scanType} scan (Mode: ${scanMode}) for: ${finalUrl} (ID: ${scanId})`);
 
-      const command = getScanCommand(scanType, finalUrl, cookies);
+      const command = getScanCommand(scanType, finalUrl, cookies, scanMode);
       
       command.opts.onComplete = (id, status, parsed) => {
         resolve({ success: status === "completed", status, parsed });
@@ -277,7 +267,7 @@ export async function startScan(req, res) {
       return res.status(401).json({ success: false, error: "Unauthorized" });
     }
 
-    const { targetUrl, scanType, cookies } = req.body || {};
+    const { targetUrl, scanType, cookies, scanMode = "quick" } = req.body || {};
     if (!targetUrl || !scanType) {
       return res
         .status(400)
@@ -344,6 +334,7 @@ export async function startScan(req, res) {
         results: {
           batchId,
           mode: "all-tools",
+          scanMode,
         },
       }));
 
@@ -379,7 +370,7 @@ export async function startScan(req, res) {
       (async () => {
         for (const scan of createdScans) {
           await Scan.findByIdAndUpdate(scan._id, { status: "running", startedAt: new Date() });
-          await launchScanInBackground(String(scan._id), finalUrl, scan.scanType, cookies);
+          await launchScanInBackground(String(scan._id), finalUrl, scan.scanType, cookies, scanMode);
         }
       })();
 
@@ -392,7 +383,7 @@ export async function startScan(req, res) {
       scanType,
       status: "running",
       startedAt: new Date(),
-      results: {},
+      results: { scanMode },
     });
 
     const updatedUser = await User.findByIdAndUpdate(
@@ -421,7 +412,7 @@ export async function startScan(req, res) {
         : undefined,
     });
 
-    launchScanInBackground(String(scanDoc._id), finalUrl, scanType, cookies);
+    launchScanInBackground(String(scanDoc._id), finalUrl, scanType, cookies, scanMode);
   } catch (error) {
     console.error("[startScan] Error:", error);
     return res.status(500).json({ success: false, error: "Failed to start scan" });
