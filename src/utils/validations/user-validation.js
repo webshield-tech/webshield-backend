@@ -32,7 +32,7 @@ export async function loginValidation(req, res, next) {
   if (!identifier) {
     return res.status(400).json({
       success: false,
-      error: 'Please fill the Fields',
+      error: 'Email or Username is required',
     });
   }
 
@@ -43,18 +43,7 @@ export async function loginValidation(req, res, next) {
     });
   }
 
-  const passwordRegex =
-    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[! @#$%^&*()_+\-=\[\]{};':"\\|,. <>\/?])[A-Za-z\d!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/? ]{8,}$/;
-
-  const validPassword = passwordRegex.test(password);
-
-  if (validPassword) {
-    next();
-  } else {
-    res.status(400).json({
-      success: false,
-      error: 'Invalid password format',
-      details: 'Password must contain:  8+ chars, uppercase, lowercase, number, special character',
-    });
-  }
+  // We do NOT enforce complexity during LOGIN. 
+  // We only check complexity during SIGNUP and RESET.
+  next();
 }
