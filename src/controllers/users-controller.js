@@ -6,12 +6,15 @@ import { verifyEmailExistence } from "../utils/email-verifier.js";
 
 function getCookieOptions() {
   const isProduction = process.env.NODE_ENV === "production";
+  const domain = process.env.COOKIE_DOMAIN || (isProduction ? ".webshield.tech" : "localhost");
+  
   return {
     httpOnly: true,
     secure: isProduction,
     sameSite: isProduction ? "none" : "lax",
     maxAge: 7 * 24 * 60 * 60 * 1000,
     path: "/",
+    domain: isProduction ? domain : undefined
   };
 }
 
@@ -147,6 +150,7 @@ export async function checkUser(user) {
     const isPasswordValid = await bcrypt.compare(password, userExists.password);
 
     if (!isPasswordValid) {
+      console.log(`[AUTH] Password mismatch for: ${identifier}`);
       return {
         success: false,
         error: "Your password is incorrect",

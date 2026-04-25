@@ -16,6 +16,8 @@ const userRouter = express.Router();
 
 function getCookieOptions() {
   const isProduction = process.env.NODE_ENV === "production";
+  const domain = process.env.COOKIE_DOMAIN || (isProduction ? ".webshield.tech" : "localhost");
+  
   return {
     httpOnly: true,
     secure: isProduction,
@@ -23,6 +25,7 @@ function getCookieOptions() {
     sameSite: isProduction ? "none" : "lax",
     maxAge: 7 * 24 * 60 * 60 * 1000,
     path: "/",
+    domain: isProduction ? domain : undefined
   };
 }
 
