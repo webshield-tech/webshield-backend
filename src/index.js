@@ -26,6 +26,7 @@ const envAllowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || "")
 const allowedOrigins = [
   "https://www.webshield.tech",
   "https://webshield.tech",
+  "https://api.webshield.tech",
   "https://webshield-frontend.vercel.app",
   "http://localhost:5173",
   configuredFrontendUrl,
