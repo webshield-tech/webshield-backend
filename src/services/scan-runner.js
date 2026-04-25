@@ -140,6 +140,10 @@ export async function startProcess(scanId, executable, args = [], opts = {}) {
         if (status === "failed") {
           await refundFailedScanQuota(scanId);
         }
+
+        if (opts.onComplete) {
+          opts.onComplete(scanId, status, parsed);
+        }
       } catch (dbErr) {
         console.error("[scan-runner] DB update error on close:", dbErr);
         try {
@@ -155,8 +159,10 @@ export async function startProcess(scanId, executable, args = [], opts = {}) {
             completedAt: new Date(),
           });
           await refundFailedScanQuota(scanId);
+          if (opts.onComplete) opts.onComplete(scanId, "failed", { error: "DB update failed" });
         } catch (finalErr) {
           console.error("[scan-runner] Final DB update error:", finalErr);
+          if (opts.onComplete) opts.onComplete(scanId, "failed", { error: "DB update failed" });
         }
       }
     });
@@ -179,8 +185,10 @@ export async function startProcess(scanId, executable, args = [], opts = {}) {
           completedAt: new Date(),
         });
         await refundFailedScanQuota(scanId);
+        if (opts.onComplete) opts.onComplete(scanId, "failed", { error: err.message });
       } catch (dbErr) {
         console.error("[scan-runner] DB update error on spawn error:", dbErr);
+        if (opts.onComplete) opts.onComplete(scanId, "failed", { error: dbErr.message });
       }
     });
 

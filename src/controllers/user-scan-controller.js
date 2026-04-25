@@ -46,7 +46,7 @@ function isRunningAsRoot() {
   return false;
 }
 
-function getScanCommand(scanType, finalUrl) {
+function getScanCommand(scanType, finalUrl, cookies = "") {
   const hostname = resolveHostname(finalUrl);
 
   if (scanType === "nmap") {
@@ -102,25 +102,31 @@ function getScanCommand(scanType, finalUrl) {
   }
 
   if (scanType === "sqlmap") {
+    const args = [
+      "-u",
+      buildSqlmapTarget(finalUrl),
+      "--batch",
+      "--smart",
+      "--level",
+      "5",
+      "--risk",
+      "3",
+      "--threads",
+      "3",
+      "--forms",
+      "--crawl",
+      "2",
+      "--no-cast",
+      "--disable-coloring",
+    ];
+
+    if (cookies) {
+      args.push("--cookie", cookies);
+    }
+
     return {
       executable: "sqlmap",
-      args: [
-        "-u",
-        buildSqlmapTarget(finalUrl),
-        "--batch",
-        "--smart",
-        "--level",
-        "5",
-        "--risk",
-        "3",
-        "--threads",
-        "3",
-        "--forms",
-        "--crawl",
-        "2",
-        "--no-cast",
-        "--disable-coloring",
-      ],
+      args,
       opts: { timeoutMs: 185000, maxRaw: 300000 },
     };
   }
@@ -128,36 +134,46 @@ function getScanCommand(scanType, finalUrl) {
   throw new Error("Unsupported scan type");
 }
 
-async function launchScanInBackground(scanId, finalUrl, scanType) {
-  try {
-    if (hasProcess(scanId)) return;
+function launchScanInBackground(scanId, finalUrl, scanType, cookies = "") {
+  return new Promise(async (resolve) => {
+    try {
+      if (hasProcess(scanId)) {
+        return resolve({ success: false, error: "Already running" });
+      }
 
-    console.log(`[SCAN_SERVICE] Starting ${scanType} scan for: ${finalUrl} (ID: ${scanId})`);
+      console.log(`[SCAN_SERVICE] Starting ${scanType} scan for: ${finalUrl} (ID: ${scanId})`);
 
-    const command = getScanCommand(scanType, finalUrl);
-    const started = await startProcess(
-      scanId,
-      command.executable,
-      command.args,
-      command.opts
-    );
+      const command = getScanCommand(scanType, finalUrl, cookies);
+      
+      command.opts.onComplete = (id, status, parsed) => {
+        resolve({ success: status === "completed", status, parsed });
+      };
 
-    if (!started.started) {
-      console.error(`[SCAN_SERVICE] Failed to start process: ${started.error}`);
-      throw new Error(started.error || "Failed to start scan process");
+      const started = await startProcess(
+        scanId,
+        command.executable,
+        command.args,
+        command.opts
+      );
+
+      if (!started.started) {
+        console.error(`[SCAN_SERVICE] Failed to start process: ${started.error}`);
+        throw new Error(started.error || "Failed to start scan process");
+      }
+
+      console.log(`[SCAN_SERVICE] Process initiated successfully for ID: ${scanId}`);
+    } catch (error) {
+      console.error("[SCAN_SERVICE] Runtime error:", error?.message || error);
+      await Scan.findByIdAndUpdate(scanId, {
+        status: "failed",
+        results: { error: error?.message || "Scan failed to start" },
+        updatedAt: new Date(),
+        completedAt: new Date(),
+      });
+      await refundFailedScanQuota(scanId);
+      resolve({ success: false, error: error?.message });
     }
-
-    console.log(`[SCAN_SERVICE] Process initiated successfully for ID: ${scanId}`);
-  } catch (error) {
-    console.error("[SCAN_SERVICE] Runtime error:", error?.message || error);
-    await Scan.findByIdAndUpdate(scanId, {
-      status: "failed",
-      results: { error: error?.message || "Scan failed to start" },
-      updatedAt: new Date(),
-      completedAt: new Date(),
-    });
-    await refundFailedScanQuota(scanId);
-  }
+  });
 }
 
 async function checkScanQuota(userId, requestedScans) {
@@ -261,7 +277,7 @@ export async function startScan(req, res) {
       return res.status(401).json({ success: false, error: "Unauthorized" });
     }
 
-    const { targetUrl, scanType } = req.body || {};
+    const { targetUrl, scanType, cookies } = req.body || {};
     if (!targetUrl || !scanType) {
       return res
         .status(400)
@@ -359,9 +375,13 @@ export async function startScan(req, res) {
           : undefined,
       });
 
-      for (const scan of createdScans) {
-        launchScanInBackground(String(scan._id), finalUrl, scan.scanType);
-      }
+      // Run sequentially in background
+      (async () => {
+        for (const scan of createdScans) {
+          await Scan.findByIdAndUpdate(scan._id, { status: "running", startedAt: new Date() });
+          await launchScanInBackground(String(scan._id), finalUrl, scan.scanType, cookies);
+        }
+      })();
 
       return;
     }
@@ -401,7 +421,7 @@ export async function startScan(req, res) {
         : undefined,
     });
 
-    launchScanInBackground(String(scanDoc._id), finalUrl, scanType);
+    launchScanInBackground(String(scanDoc._id), finalUrl, scanType, cookies);
   } catch (error) {
     console.error("[startScan] Error:", error);
     return res.status(500).json({ success: false, error: "Failed to start scan" });
