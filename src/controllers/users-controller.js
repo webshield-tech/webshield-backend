@@ -112,7 +112,8 @@ export async function signupUser(req, res) {
 
 export async function checkUser(user) {
   try {
-    const identifier = user.emailOrUsername || user.email || user.username;
+    const rawIdentifier = user.emailOrUsername || user.email || user.username;
+    const identifier = String(rawIdentifier || "").trim().toLowerCase();
     const password = user.password;
 
     if (!identifier) {
@@ -134,6 +135,7 @@ export async function checkUser(user) {
     });
 
     if (!userExists) {
+      console.log(`[AUTH] User not found: "${identifier}"`);
       return {
         success: false,
         error: "User does not exist",
