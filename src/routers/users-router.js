@@ -69,7 +69,7 @@ userRouter.post("/signup", signUpValidation, async (req, res) => {
 });
 
 // LOGIN ROUTE
-userRouter.post("/login", loginValidation,loginLimiter, async (req, res) => {
+userRouter.post("/login", loginLimiter, loginValidation, async (req, res) => {
   try {
     const user = req.body;
 
@@ -88,14 +88,10 @@ userRouter.post("/login", loginValidation,loginLimiter, async (req, res) => {
       });
     }
 
-const cookieOptions = getCookieOptions();
+    const cookieOptions = getCookieOptions();
     res.cookie("token", response.token, cookieOptions);
 
     console.log("Login successful");
-    console.log(
-      " Cookie set:",
-      "token=" + response.token.substring(0, 20) + "..."
-    );
     console.log(" Cookie options:", JSON.stringify(cookieOptions));
 
     res.json({
