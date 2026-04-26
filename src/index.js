@@ -8,9 +8,6 @@ import authRouter from "./routers/auth-router.js";
 import adminRouter from "./routers/admin-router.js";
 import exploitRouter from "./routers/exploit-router.js";
 import cors from "cors";
-import helmet from "helmet";
-import mongoSanitize from "express-mongo-sanitize";
-import { injectionDetector } from "./middlewares/security.js";
 
 import { seedAdmin } from "./utils/seed-admin.js";
 import { killAllProcesses } from "./services/scan-runner.js";
@@ -61,13 +58,9 @@ app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions));
 
 app.use(cookieParser());
-app.use(helmet());
-app.use(mongoSanitize());
 
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
-
-app.use(injectionDetector);
 
 connectDB().then(() => {
   seedAdmin();
