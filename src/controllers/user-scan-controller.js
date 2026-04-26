@@ -112,8 +112,8 @@ function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quick") {
     if (scanMode === "full") {
       args.push("--forms", "--crawl", "3", "--dump-all");
     } else {
-      // Quick: just test the URL parameter directly, also scan forms on the same page
-      args.push("--forms");
+      // Quick: scan forms and crawl 1 level to find forms/params on landing pages
+      args.push("--forms", "--crawl", "1");
     }
 
     if (cookies) {
