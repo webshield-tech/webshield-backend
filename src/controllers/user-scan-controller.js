@@ -329,8 +329,7 @@ export async function startScan(req, res) {
         userId,
         targetUrl: finalUrl,
         scanType: tool,
-        status: "running",
-        startedAt: new Date(),
+        status: "pending",
         results: {
           batchId,
           mode: "all-tools",

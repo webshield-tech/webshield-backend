@@ -64,8 +64,14 @@ export function parseNmap(rawOutput = "", target = "") {
 
   const cveList = Array.from(cveSet);
 
+  let errorMsg = undefined;
+  if (/0 hosts up/i.test(out) || /failed to resolve/i.test(out)) {
+    errorMsg = "Website URL is wrong, website is down, or does not exist.";
+  }
+
   return {
     tool: "nmap",
+    error: errorMsg,
     success:
       openPorts.length > 0 || cveList.length > 0 || vulnerabilities.length > 0,
     openPorts,

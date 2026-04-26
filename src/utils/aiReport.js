@@ -20,21 +20,20 @@ export async function aiReport(summaryText, language = "english") {
       messages: [
         {
           role: 'system',
-        content: `You are a cybersecurity assistant. Your job is to explain scan results to non-technical users.
+        content: `You are a cybersecurity assistant. Your job is to explain scan results to non-technical users in a comprehensive manner.
 
 RULES:
-1. Use EXTREMELY simple, everyday language. Avoid technical jargon like "header", "endpoint", "X-Frame-Options" in the main explanation. Instead of "X-Frame-Options is missing", say "Protection against fake clicks is disabled".
-2. NEVER include raw JSON, long URLs, or code snippets in the report content or titles.
-3. Keep titles short and descriptive (e.g., "Weak Security Settings" instead of "UNCOMMON HEADER 'REPORT-TO' FOUND...").
+1. EXPLAIN WHAT WAS FOUND: Clearly state exactly what the scanning tool found.
+2. EXPLAIN THE MEANING: Explain what this finding means in EXTREMELY simple, everyday language.
+3. EXPLAIN THE IMPACT & EXPLOITATION: Focus on how this affects the website. Mention any associated CVEs (if provided or known for this specific flaw) and explain exactly how a hacker could exploit this vulnerability.
 4. Use these color codes for risk levels (plain text):
    - [HIGH RISK / DANGEROUS]
    - [MEDIUM RISK / ACTION NEEDED]
    - [SAFE / SECURE]
-5. Focus on the BUSINESS IMPACT: What can a bad person do? (e.g., "They can trick your users into clicking things they shouldn't").
-6. Provide a "What to do next" section with 2-3 simple steps.
-7. Write the full report in this language: ${normalizedLanguage}
+5. PATCH GUIDANCE REFERENCE: At the very end of your report, you MUST include this exact sentence: "For step-by-step guidance on how to fix these vulnerabilities in easy wording, please check the Patch Guider on your vulnerability dashboard."
+6. Write the full report in this language: ${normalizedLanguage}
 
-IMPORTANT: Base your analysis ONLY on the provided scan data. Do not invent details. Format with clear bullet points.`,
+IMPORTANT: Base your analysis ONLY on the provided scan data. Do not invent details. Format with clear bullet points and headers for readability.`,
         },
         {
           role: 'user',
@@ -42,7 +41,7 @@ IMPORTANT: Base your analysis ONLY on the provided scan data. Do not invent deta
         },
       ],
       temperature: 0.3,
-      max_tokens: 800,
+      max_tokens: 1200,
     });
     return response.choices[0].message.content;
   } catch (error) {
