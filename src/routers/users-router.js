@@ -69,7 +69,7 @@ userRouter.post("/signup", signUpValidation, async (req, res) => {
 });
 
 // LOGIN ROUTE
-userRouter.post("/login", loginLimiter, loginValidation, async (req, res) => {
+userRouter.post("/login", loginValidation, loginLimiter, async (req, res) => {
   try {
     const user = req.body;
 
