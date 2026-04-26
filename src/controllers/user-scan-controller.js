@@ -84,31 +84,37 @@ function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quick") {
   if (scanType === "ssl") {
     return {
       executable: "sslscan",
-      args: ["--no-colour", hostname],
-      opts: { timeoutMs: 180000, maxRaw: 100000 },
+      args: ["--no-colour", "--show-certificate", hostname],
+      opts: { timeoutMs: 120000, maxRaw: 200000 },
     };
   }
 
   if (scanType === "sqlmap") {
-    const level = scanMode === "full" ? "5" : "1";
-    const risk = scanMode === "full" ? "3" : "1";
+    const level = scanMode === "full" ? "5" : "2";
+    const risk  = scanMode === "full" ? "3" : "1";
+
+    // Core args that work reliably on real test sites (testphp.vulnweb.com etc.)
     const args = [
-      "-u",
-      buildSqlmapTarget(finalUrl),
-      "--batch",
-      "--smart",
-      "--level",
-      level,
-      "--risk",
-      risk,
-      "--threads",
-      "3",
-      "--forms",
-      "--crawl",
-      scanMode === "full" ? "3" : "2",
-      "--no-cast",
+      "-u", buildSqlmapTarget(finalUrl),
+      "--batch",              // non-interactive
+      "--level", level,
+      "--risk",  risk,
+      "--threads", "4",
+      "--timeout", "30",      // per-request timeout in seconds
+      "--retries", "2",       // retry on connection error
+      "--random-agent",       // randomise User-Agent (helps bypass WAFs)
+      "--technique", "BEUST", // Boolean, Error, Union, Stack, Time-based
       "--disable-coloring",
+      "--output-dir", "/tmp/sqlmap-output",
     ];
+
+    // For deep scan also crawl forms
+    if (scanMode === "full") {
+      args.push("--forms", "--crawl", "3", "--dump-all");
+    } else {
+      // Quick: just test the URL parameter directly, also scan forms on the same page
+      args.push("--forms");
+    }
 
     if (cookies) {
       args.push("--cookie", cookies);
@@ -117,7 +123,10 @@ function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quick") {
     return {
       executable: "sqlmap",
       args,
-      opts: { timeoutMs: scanMode === "full" ? 600000 : 185000, maxRaw: 500000 },
+      opts: {
+        timeoutMs: scanMode === "full" ? 600000 : 240000,
+        maxRaw: 500000,
+      },
     };
   }
 

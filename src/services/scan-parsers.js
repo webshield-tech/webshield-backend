@@ -194,45 +194,70 @@ export function parseSqlmap(rawOutput = "", target = "") {
     .filter(Boolean);
 
   let vulnerable = false;
+  let scanRan = false;
   const vulnerabilities = [];
   const warnings = [];
   const databases = new Set();
   const tables = [];
   const injectionPoints = [];
+  const injectionTypes = [];
 
   for (const line of lines) {
     const lower = line.toLowerCase();
 
-    if (
-      /is vulnerable|is injectable|parameter.*is vulnerable|payload:/i.test(
-        line
-      ) ||
-      lower.includes("sql injection")
-    ) {
-      vulnerable = true;
-      vulnerabilities.push(line);
+    // Detect that sqlmap actually ran against the target
+    if (/testing url|testing connection|sqlmap resumed|heuristic|target url/i.test(line)) {
+      scanRan = true;
     }
 
+    // Primary injectable detection
     if (
-      /does not seem to be injectable|not injectable|could not fingerprint/i.test(
-        lower
-      )
+      /is vulnerable|is injectable|parameter.*is vulnerable|parameter.*injectable/i.test(line) ||
+      /identified the following injection point/i.test(line) ||
+      lower.includes("sql injection") ||
+      /type:\s*(boolean|error|time|union|stacked)/i.test(line)
+    ) {
+      vulnerable = true;
+      if (!vulnerabilities.includes(line)) vulnerabilities.push(line);
+    }
+
+    // Injection type classification
+    const typeMatch = line.match(/Type:\s*(.+)/i);
+    if (typeMatch) {
+      injectionTypes.push(typeMatch[1].trim());
+      vulnerable = true;
+    }
+
+    // Payload lines confirm injection
+    if (/Payload:\s*.+/i.test(line)) {
+      vulnerable = true;
+      injectionPoints.push(line);
+    }
+
+    // "Not injectable" warnings
+    if (
+      /does not seem to be injectable|not injectable|could not fingerprint|parameter .* does not appear/i.test(lower)
     ) {
       warnings.push(line);
     }
 
-    // Simple DB extraction lines e.g. "[1] information_schema"
-    const dbMatch = line.match(/^\[\d+\]\s*([\w-]+)/);
+    // DB names from "[1] dbname" style output
+    const dbMatch = line.match(/^\[\d+\]\s+([\w-]+)/);
     if (dbMatch) databases.add(dbMatch[1]);
 
+    // Also from "available databases [N]:" lines and subsequent entries
     if (/table:/i.test(line) || /tables/i.test(lower)) {
       if (!tables.includes(line)) tables.push(line);
     }
 
-    if (/parameter:|injection point|injection:|payload:/i.test(line)) {
-      injectionPoints.push(line);
+    // Parameter / injection point lines
+    if (/parameter:|injection point|injection:|place:/i.test(line)) {
+      if (!injectionPoints.includes(line)) injectionPoints.push(line);
     }
   }
+
+  // If sqlmap ran (even without finding injection) mark scan as ran
+  if (!scanRan && out.length > 200) scanRan = true;
 
   const dbmsMatch = out.match(/back-end DBMS:\s*([^\n\r]+)/i);
   const dbms = dbmsMatch ? dbmsMatch[1].trim() : null;
@@ -242,13 +267,14 @@ export function parseSqlmap(rawOutput = "", target = "") {
 
   return {
     tool: "sqlmap",
-    success: vulnerable,
-    vulnerable,
+    success: scanRan,       // scan ran OK (even if nothing found)
+    vulnerable,             // actual SQL injection found
     vulnerabilities: vulnerabilities.slice(0, 100),
+    injectionTypes,
     warnings: warnings.slice(0, 50),
     databases: Array.from(databases),
     tables: tables.slice(0, 200),
-    injectionPoints,
+    injectionPoints: injectionPoints.slice(0, 50),
     details: {
       testedUrl: target,
       dbms,
@@ -256,12 +282,15 @@ export function parseSqlmap(rawOutput = "", target = "") {
       findingsCount: vulnerabilities.length,
       databasesFound: databases.size,
       tablesFound: tables.length,
+      injectionTypes,
     },
     rawOutput: out,
     target,
     summary: vulnerable
-      ? `SQL injection likely (DB: ${dbms || "unknown"})`
-      : "No SQL injection detected",
+      ? `SQL injection confirmed (DB: ${dbms || "unknown"}, Types: ${injectionTypes.join(", ") || "detected"})`
+      : scanRan
+      ? "Scan completed — no SQL injection detected on tested parameters"
+      : "Scan did not complete successfully",
   };
 }
 export function parseSsl(rawOutput = "", target = "") {
@@ -276,26 +305,49 @@ export function parseSsl(rawOutput = "", target = "") {
   const weakCiphers = [];
   const deprecatedProtocols = [];
   const certificateIssues = [];
+  const heartbleedVulnerable = [];
   const cert = {};
+
+  // Track whether sslscan actually ran and produced output
+  const looksLikeSslscan =
+    /SSL\/TLS Protocols|TLSv1|SSLv|Supported Server Cipher|SSL Certificate/i.test(out);
 
   for (const line of lines) {
     const low = line.toLowerCase();
 
+    // Only flag deprecated protocols that are ENABLED (not disabled/not supported)
+    // sslscan output: "TLSv1.0   enabled" or "SSLv2   enabled"
     if (/sslv2|sslv3|tlsv1\.0|tlsv1\.1/i.test(low)) {
-      deprecatedProtocols.push(line);
-      critical.push(`Deprecated protocol: ${line}`);
+      // Exclude lines explicitly saying disabled / not supported
+      if (!/disabled|not supported|not enabled/i.test(low)) {
+        deprecatedProtocols.push(line);
+        critical.push(`Deprecated protocol detected: ${line}`);
+      }
     }
 
-    if (/(weak|null|export|des|rc4)/i.test(low)) {
+    // Weak/null ciphers — only when the cipher is being OFFERED (has key size or "Accepted")
+    // sslscan output: "Accepted  TLSv1.2  256 bits  RC4-SHA"
+    if (
+      /(RC4|NULL|EXPORT|DES|ANON|MD5|3DES)/i.test(line) &&
+      /(Accepted|bits|enabled)/i.test(line)
+    ) {
       weakCiphers.push(line);
-      issues.push(`Weak cipher: ${line}`);
+      issues.push(`Weak cipher suite offered: ${line}`);
     }
 
+    // Heartbleed
+    if (/heartbleed/i.test(low) && /vulnerable/i.test(low)) {
+      heartbleedVulnerable.push(line);
+      critical.push(`Heartbleed vulnerability: ${line}`);
+    }
+
+    // Certificate issues
     if (/expired|self-signed|invalid|revoked|mismatch/i.test(low)) {
       certificateIssues.push(line);
       critical.push(`Certificate issue: ${line}`);
     }
 
+    // Certificate fields — sslscan indents with spaces, trim() handles that
     const subject = line.match(/^Subject:\s*(.+)$/i);
     if (subject) cert.subject = subject[1].trim();
 
@@ -310,27 +362,33 @@ export function parseSsl(rawOutput = "", target = "") {
 
     const sig = line.match(/^Signature Algorithm:\s*(.+)$/i);
     if (sig) cert.signatureAlgorithm = sig[1].trim();
+
+    // Common Name
+    const cn = line.match(/CN=([^,\n]+)/i);
+    if (cn && !cert.commonName) cert.commonName = cn[1].trim();
   }
 
-  const hasTLS12 = /TLSv1\.2/.test(out);
-  const hasTLS13 = /TLSv1\.3/.test(out);
-  const allIssues = [
-    ...new Set([...critical, ...issues, ...certificateIssues]),
-  ];
+  const hasTLS12 = /TLSv1\.2\s+(enabled|Accepted)/i.test(out);
+  const hasTLS13 = /TLSv1\.3\s+(enabled|Accepted)/i.test(out);
 
-  // FIXED: If no issues found, success = true
-  // If issues found, success = false (because SSL has problems)
-  const success = allIssues.length === 0;
+  const allIssues = [...new Set([...critical, ...issues, ...certificateIssues])];
+
+  // success = scan ran and produced output (true even when vulnerabilities found)
+  // hasVulnerabilities = actual security problems found
+  const success = looksLikeSslscan || lines.length > 5;
+  const hasVulnerabilities = allIssues.length > 0;
 
   return {
     tool: "ssl",
-    success: success,
+    success,
+    hasVulnerabilities,
     totalIssues: allIssues.length,
     issues: allIssues.slice(0, 100),
     criticalIssues: critical,
     weakCiphers,
     deprecatedProtocols,
     certificateIssues,
+    heartbleedVulnerable,
     certificateDetails: cert,
     supportsTLS12: hasTLS12,
     supportsTLS13: hasTLS13,
