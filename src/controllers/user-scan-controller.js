@@ -28,17 +28,30 @@ export async function pingTarget(req, res) {
     const finalUrl = validation.url;
 
     try {
-      await axios.get(finalUrl, {
+      // Use a common browser User-Agent to avoid being blocked by WAFs during ping
+      const config = {
         timeout: 10000,
         validateStatus: () => true,
         maxRedirects: 5,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        },
         httpsAgent: new https.Agent({ rejectUnauthorized: false }),
-      });
+      };
+
+      try {
+        await axios.get(finalUrl, config);
+      } catch (getErr) {
+        // Fallback to HEAD if GET fails
+        await axios.head(finalUrl, config);
+      }
+      
       return res.json({ success: true, message: "Target is reachable and alive." });
     } catch (error) {
+      console.error(`[pingTarget] Host ${finalUrl} is unreachable:`, error.message);
       return res.status(503).json({ 
         success: false, 
-        error: "Target Unreachable: The website is offline or blocking connection. Please check the URL." 
+        error: "Target Unreachable: Host is not responding. Ensure the URL is correct." 
       });
     }
   } catch (error) {
