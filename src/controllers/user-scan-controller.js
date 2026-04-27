@@ -1,4 +1,5 @@
 import axios from "axios";
+import https from "https";
 import { randomUUID } from "crypto";
 import { Scan } from "../models/scans-mongoose.js";
 import { User } from "../models/users-mongoose.js";
@@ -39,6 +40,7 @@ export async function pingTarget(req, res) {
       targetPort = parts[1] || '80';
     }
 
+    const httpsAgent = new https.Agent({ rejectUnauthorized: false });
     const probeConfig = {
       timeout: 8000,
       maxRedirects: 5,
@@ -50,12 +52,26 @@ export async function pingTarget(req, res) {
       responseType: "text",
     };
 
-    const probeViaHttp = async (method) => {
+    const probeUrls = [];
+    try {
+      const parsedUrl = new URL(validation.url);
+      probeUrls.push(parsedUrl.href);
+      const alternate = new URL(parsedUrl.href);
+      alternate.protocol = parsedUrl.protocol === "https:" ? "http:" : "https:";
+      if (!probeUrls.includes(alternate.href)) {
+        probeUrls.push(alternate.href);
+      }
+    } catch {
+      probeUrls.push(validation.url);
+    }
+
+    const probeViaHttp = async (candidateUrl, method) => {
       try {
         const response = await axios.request({
           method,
-          url: validation.url,
+          url: candidateUrl,
           ...probeConfig,
+          ...(candidateUrl.startsWith("https:") ? { httpsAgent } : {}),
         });
         return { ok: true, status: response.status };
       } catch (error) {
@@ -63,15 +79,32 @@ export async function pingTarget(req, res) {
       }
     };
 
-    const headProbe = await probeViaHttp("HEAD");
-    const getProbe = headProbe.ok ? null : await probeViaHttp("GET");
+    let successfulProbe = null;
+    let methodUsed = "http-get";
 
-    if (headProbe.ok || getProbe?.ok) {
+    for (const candidateUrl of probeUrls) {
+      const headProbe = await probeViaHttp(candidateUrl, "HEAD");
+      if (headProbe.ok) {
+        successfulProbe = candidateUrl;
+        methodUsed = candidateUrl.startsWith("https:") ? "https-head" : "http-head";
+        break;
+      }
+
+      const getProbe = await probeViaHttp(candidateUrl, "GET");
+      if (getProbe.ok) {
+        successfulProbe = candidateUrl;
+        methodUsed = candidateUrl.startsWith("https:") ? "https-get" : "http-get";
+        break;
+      }
+    }
+
+    if (successfulProbe) {
       return res.json({ 
         success: true, 
         message: "Target is reachable and alive.", 
         host: targetHost,
-        method: headProbe.ok ? "http-head" : "http-get"
+        method: methodUsed,
+        url: successfulProbe,
       });
     } else {
       console.error(`[pingTarget] Host ${targetHost} failed HTTP reachability probes.`);
@@ -95,14 +128,15 @@ function buildSqlmapTarget(url) {
 }
 
 function resolveHostname(url) {
-  const hostname = new URL(url).hostname;
-  validateHostname(hostname);
+  const parsed = new URL(url);
+  const hostname = parsed.hostname;
+  validateHostname(hostname, { port: parsed.port || (parsed.protocol === "https:" ? "443" : "80") });
   return hostname;
 }
 
 function resolveSslTarget(url) {
   const parsed = new URL(url);
-  validateHostname(parsed.hostname);
+  validateHostname(parsed.hostname, { port: parsed.port || (parsed.protocol === "https:" ? "443" : "80") });
   // For http targets, scan default TLS endpoint on 443.
   // For https targets with explicit port, honor that port.
   if (parsed.protocol === "https:" && parsed.port) {

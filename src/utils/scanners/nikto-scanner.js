@@ -7,11 +7,15 @@ export async function scanWithNikto(targetUrl) {
   try {
     console.log('Starting Nikto Scan for:  ', targetUrl);
 
-    // Extract hostname
+    // Extract hostname and port
     let hostname = targetUrl;
+    let port = 80;
+    let useSsl = false;
     try {
       const urlObj = new URL(targetUrl);
       hostname = urlObj.hostname;
+      port = Number(urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80));
+      useSsl = urlObj.protocol === 'https:';
       console.log('Extracted hostname:', hostname);
     } catch (err) {
       console.log('Using original target as hostname:', hostname);
@@ -20,7 +24,7 @@ export async function scanWithNikto(targetUrl) {
     console.log('start scanning nikto for', hostname);
 
     // USE ONLY -Tuning b 
-    const command = `timeout 180 nikto -h ${hostname} -port 80 -Tuning b -maxtime 120s -nointeractive`;
+    const command = `timeout 180 nikto -h ${hostname} -port ${port}${useSsl ? ' -ssl' : ''} -Tuning b -maxtime 120s -nointeractive`;
 
     console.log('Running Nikto command:', command);
 

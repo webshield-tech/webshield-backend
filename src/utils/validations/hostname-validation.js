@@ -1,4 +1,4 @@
-export function validateHostname(hostname) {
+export function validateHostname(hostname, options = {}) {
   // Reject empty
   if (!hostname || hostname.trim() === '') {
     throw new Error('Hostname cannot be empty');
@@ -28,10 +28,24 @@ export function validateHostname(hostname) {
       .trim()
       .toLowerCase() === "true";
 
+  const normalizedPort = String(options.port ?? "").trim();
+  const demoLoopbackPorts = new Set(["80", "443", "8080"]);
+  const demoLoopbackHosts = new Set([
+    "localhost",
+    "127.0.0.1",
+    "::1",
+    "host.docker.internal",
+  ]);
+  const isDemoLoopbackTarget =
+    !allowLocalTargets &&
+    demoLoopbackPorts.has(normalizedPort) &&
+    demoLoopbackHosts.has(hostname.toLowerCase());
+
   // Block internal/private IPs and localhost (unless explicitly enabled for local demo)
   const blockedPatterns = [
     'localhost',
     '127.0.0.1',
+    'host.docker.internal',
     '192.168.',
     '10.',
     '172.16.',
@@ -55,6 +69,9 @@ export function validateHostname(hostname) {
   if (!allowLocalTargets) {
     for (const pattern of blockedPatterns) {
       if (hostname.includes(pattern)) {
+        if (isDemoLoopbackTarget) {
+          return hostname;
+        }
         throw new Error('Scanning internal networks is not allowed');
       }
     }

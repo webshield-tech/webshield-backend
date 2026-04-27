@@ -2,7 +2,8 @@ import { spawn } from "child_process";
 
 function extractDomain(targetUrl) {
   try {
-    return new URL(targetUrl).hostname;
+    const parsed = new URL(targetUrl);
+    return parsed.port ? `${parsed.hostname}:${parsed.port}` : parsed.hostname;
   } catch {
     return targetUrl
       .replace(/^https?:\/\//i, "")
