@@ -13,8 +13,8 @@ import { validateHostname } from "../utils/validations/hostname-validation.js";
 import { urlValidation } from "../utils/validations/url-validation.js";
 
 const ALLOWED_SCANS = ["nmap", "nikto", "ssl", "sqlmap"];
-const DAILY_PER_TOOL_LIMIT = 2;
-const DAILY_AUTO_LIMIT = 2;
+const DAILY_PER_TOOL_LIMIT = 10;
+const DAILY_AUTO_LIMIT = 5;
 
 /**
  * MANUAL PING CHECK: Endpoint to let user check if target is alive
@@ -546,13 +546,13 @@ export async function startScan(req, res) {
     }
     const finalUrl = validation.url;
 
-    // Domain Blacklist Check
+    // Domain Blacklist Check - Protect major public infrastructure
     const hostname = new URL(finalUrl).hostname.toLowerCase();
-    const blacklistedDomains = ['netflix.com', 'google.com', 'facebook.com', 'amazon.com', 'apple.com', 'microsoft.com'];
-    if (blacklistedDomains.some(domain => hostname.includes(domain))) {
+    const strictlyProhibited = ['netflix.com', 'amazon.com', 'apple.com', 'microsoft.com'];
+    if (strictlyProhibited.some(domain => hostname === domain || hostname.endsWith(`.${domain}`))) {
       return res.status(403).json({ 
         success: false, 
-        error: "Ethical boundaries breached: Scanning major public infrastructure is strictly prohibited." 
+        error: "Ethical boundaries: Scanning major public infrastructure is strictly prohibited." 
       });
     }
 
