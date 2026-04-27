@@ -1,3 +1,5 @@
+import axios from "axios";
+import https from "https";
 import { randomUUID } from "crypto";
 import { Scan } from "../models/scans-mongoose.js";
 import { User } from "../models/users-mongoose.js";
@@ -11,6 +13,29 @@ import { validateHostname } from "../utils/validations/hostname-validation.js";
 import { urlValidation } from "../utils/validations/url-validation.js";
 
 const ALLOWED_SCANS = ["nmap", "nikto", "ssl", "sqlmap"];
+
+/**
+ * Check if the host is alive before scanning
+ */
+async function checkHostAlive(url) {
+  try {
+    // Perform a quick request to check if the host is reachable
+    // We ignore SSL errors to be permissive for security testing targets
+    await axios.get(url, {
+      timeout: 8000,
+      validateStatus: () => true, // Accept any status code as "alive"
+      maxRedirects: 5,
+      httpsAgent: new https.Agent({ rejectUnauthorized: false }),
+    });
+    return { alive: true };
+  } catch (error) {
+    console.error(`[checkHostAlive] Host ${url} is unreachable:`, error.message);
+    return { 
+      alive: false, 
+      error: "Target Unreachable: The website is offline or blocking our connection. Please ensure the URL is correct and the host is alive before scanning." 
+    };
+  }
+}
 
 function getUserIdFromRequest(req) {
   return req.userId || req.user?.userId;
@@ -93,26 +118,23 @@ function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quick") {
     const level = scanMode === "full" ? "5" : "2";
     const risk  = scanMode === "full" ? "3" : "1";
 
-    // Core args that work reliably on real test sites (testphp.vulnweb.com etc.)
     const args = [
       "-u", buildSqlmapTarget(finalUrl),
-      "--batch",              // non-interactive
+      "--batch",
       "--level", level,
       "--risk",  risk,
       "--threads", "4",
-      "--timeout", "30",      // per-request timeout in seconds
-      "--retries", "2",       // retry on connection error
-      "--random-agent",       // randomise User-Agent (helps bypass WAFs)
-      "--technique", "BEUST", // Boolean, Error, Union, Stack, Time-based
+      "--timeout", "30",
+      "--retries", "2",
+      "--random-agent",
+      "--technique", "BEUST",
       "--disable-coloring",
       "--output-dir", "/tmp/sqlmap-output",
     ];
 
-    // For deep scan also crawl forms
     if (scanMode === "full") {
       args.push("--forms", "--crawl", "3", "--dump-all");
     } else {
-      // Quick: scan forms and crawl 1 level to find forms/params on landing pages
       args.push("--forms", "--crawl", "1");
     }
 
@@ -156,11 +178,8 @@ function launchScanInBackground(scanId, finalUrl, scanType, cookies = "", scanMo
       );
 
       if (!started.started) {
-        console.error(`[SCAN_SERVICE] Failed to start process: ${started.error}`);
         throw new Error(started.error || "Failed to start scan process");
       }
-
-      console.log(`[SCAN_SERVICE] Process initiated successfully for ID: ${scanId}`);
     } catch (error) {
       console.error("[SCAN_SERVICE] Runtime error:", error?.message || error);
       const existingScan = await Scan.findById(scanId).lean();
@@ -181,7 +200,10 @@ function launchScanInBackground(scanId, finalUrl, scanType, cookies = "", scanMo
   });
 }
 
-async function checkScanQuota(userId, requestedScans) {
+/**
+ * Check Quota: 1 Full Scan per day, 10 Single Scans per day
+ */
+async function checkScanQuota(userId, scanType) {
   const user = await User.findById(userId)
     .select("scanLimit usedScan")
     .lean();
@@ -190,22 +212,43 @@ async function checkScanQuota(userId, requestedScans) {
     return { ok: false, code: 404, error: "User not found" };
   }
 
-  const used = Number(user.usedScan || 0);
-  const limit = Number(user.scanLimit || 0);
-  const remaining = Math.max(limit - used, 0);
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
 
-  if (requestedScans > remaining) {
-    return {
-      ok: false,
-      code: 403,
-      error: `Daily scan limit reached (${limit}). Buy Premium to run more scans.`,
-      remaining,
-      scanLimit: limit,
-      usedScan: used,
-    };
+  if (scanType === "all") {
+    // Separate quota for Full Scans (limit 1 per day)
+    const fullScansToday = await Scan.countDocuments({
+      userId,
+      "results.mode": "all-tools",
+      createdAt: { $gte: startOfDay }
+    });
+
+    if (fullScansToday >= 1) {
+      return {
+        ok: false,
+        code: 403,
+        error: "Daily Full Scan limit reached (1). Buy Premium for unlimited deep audits.",
+      };
+    }
+    return { ok: true };
+  } else {
+    // Global quota for Single Scans (limit 10 per day)
+    const used = Number(user.usedScan || 0);
+    const limit = Number(user.scanLimit || 10);
+    const remaining = Math.max(limit - used, 0);
+
+    if (remaining <= 0) {
+      return {
+        ok: false,
+        code: 403,
+        error: `Daily single scan limit reached (${limit}). Buy Premium for more scans.`,
+        remaining,
+        scanLimit: limit,
+        usedScan: used,
+      };
+    }
+    return { ok: true, remaining, scanLimit: limit, usedScan: used };
   }
-
-  return { ok: true, remaining, scanLimit: limit, usedScan: used };
 }
 
 function inferImpact(scan) {
@@ -284,9 +327,7 @@ export async function startScan(req, res) {
 
     const { targetUrl, scanType, cookies, scanMode = "quick" } = req.body || {};
     if (!targetUrl || !scanType) {
-      return res
-        .status(400)
-        .json({ success: false, error: "targetUrl and scanType are required" });
+      return res.status(400).json({ success: false, error: "targetUrl and scanType are required" });
     }
 
     if (scanType !== "all" && !ALLOWED_SCANS.includes(scanType)) {
@@ -299,18 +340,23 @@ export async function startScan(req, res) {
     }
     const finalUrl = validation.url;
 
-    // Domain Blacklist Check (Ethical Boundaries)
+    // --- PRE-SCAN PING CHECK ---
+    const hostStatus = await checkHostAlive(finalUrl);
+    if (!hostStatus.alive) {
+      return res.status(503).json({ success: false, error: hostStatus.error });
+    }
+
+    // Domain Blacklist Check
     const hostname = new URL(finalUrl).hostname.toLowerCase();
     const blacklistedDomains = ['netflix.com', 'google.com', 'facebook.com', 'amazon.com', 'apple.com', 'microsoft.com'];
     if (blacklistedDomains.some(domain => hostname.includes(domain))) {
       return res.status(403).json({ 
         success: false, 
-        error: "Ethical boundaries breached: Scanning major public infrastructure like Netflix or Google is strictly prohibited." 
+        error: "Ethical boundaries breached: Scanning major public infrastructure is strictly prohibited." 
       });
     }
 
-    const requestedScans = scanType === "all" ? ALLOWED_SCANS.length : 1;
-    const quota = await checkScanQuota(userId, requestedScans);
+    const quota = await checkScanQuota(userId, scanType);
     if (!quota.ok) {
       return res.status(quota.code).json({
         success: false,
@@ -353,14 +399,9 @@ export async function startScan(req, res) {
       }));
 
       const createdScans = await Scan.insertMany(scanDocs);
-      const updatedUser = await User.findByIdAndUpdate(
-        userId,
-        { $inc: { usedScan: ALLOWED_SCANS.length } },
-        { new: true }
-      )
-        .select("usedScan scanLimit")
-        .lean();
-
+      
+      // Note: We don't increment usedScan for full scans per user request (separate limit)
+      
       res.status(201).json({
         success: true,
         message: "All tools scan started",
@@ -372,12 +413,6 @@ export async function startScan(req, res) {
           targetUrl: s.targetUrl,
           status: s.status,
         })),
-        user: updatedUser
-          ? {
-              usedScan: updatedUser.usedScan,
-              scanLimit: updatedUser.scanLimit,
-            }
-          : undefined,
       });
 
       // Run sequentially in background
@@ -444,9 +479,7 @@ export async function getScanHistory(req, res) {
     return res.json({ success: true, scans });
   } catch (error) {
     console.error("[getScanHistory] Error:", error);
-    return res
-      .status(500)
-      .json({ success: false, error: "Failed to fetch scan history" });
+    return res.status(500).json({ success: false, error: "Failed to fetch scan history" });
   }
 }
 
@@ -467,9 +500,7 @@ export async function getScanResultsById(req, res) {
     return res.json({ success: true, scan });
   } catch (error) {
     console.error("[getScanResultsById] Error:", error);
-    return res
-      .status(500)
-      .json({ success: false, error: "Failed to fetch scan result" });
+    return res.status(500).json({ success: false, error: "Failed to fetch scan result" });
   }
 }
 
@@ -499,9 +530,7 @@ export async function getBatchResults(req, res) {
     });
   } catch (error) {
     console.error("[getBatchResults] Error:", error);
-    return res
-      .status(500)
-      .json({ success: false, error: "Failed to fetch batch results" });
+    return res.status(500).json({ success: false, error: "Failed to fetch batch results" });
   }
 }
 
@@ -520,10 +549,7 @@ export async function cancelScan(req, res) {
     }
 
     if (["completed", "failed", "cancelled"].includes(scan.status)) {
-      return res.json({
-        success: true,
-        message: `Scan already ${scan.status}`,
-      });
+      return res.json({ success: true, message: `Scan already ${scan.status}` });
     }
 
     const result = await killProcess(scanId, `Cancelled by user ${userId}`);
@@ -542,10 +568,7 @@ export async function cancelScan(req, res) {
       completedAt: new Date(),
     });
 
-    return res.json({
-      success: true,
-      message: "Scan marked cancelled (no active process found)",
-    });
+    return res.json({ success: true, message: "Scan marked cancelled" });
   } catch (error) {
     console.error("[cancelScan] Error:", error);
     return res.status(500).json({ success: false, error: "Failed to cancel scan" });
@@ -563,10 +586,7 @@ export async function startImpactDemo(req, res) {
     }
 
     if (consent !== true) {
-      return res.status(400).json({
-        success: false,
-        error: "User consent is required before impact demonstration",
-      });
+      return res.status(400).json({ success: false, error: "User consent is required" });
     }
 
     const scan = await Scan.findOne({ _id: scanId, userId });
@@ -575,11 +595,7 @@ export async function startImpactDemo(req, res) {
     }
 
     if (scan.status !== "completed") {
-      return res.status(400).json({
-        success: false,
-        error: "Scan is not completed yet",
-        status: scan.status,
-      });
+      return res.status(400).json({ success: false, error: "Scan is not completed yet" });
     }
 
     const impact = inferImpact(scan);
@@ -591,7 +607,7 @@ export async function startImpactDemo(req, res) {
       criticalityScore: impact.score,
       evidence: impact.evidence,
       safeDemoSteps: impact.safeDemoSteps,
-      note: "This platform provides non-invasive impact simulation only. No active exploitation is executed.",
+      note: "This platform provides non-invasive impact simulation only.",
     };
 
     scan.results = {
@@ -601,16 +617,10 @@ export async function startImpactDemo(req, res) {
 
     await scan.save();
 
-    return res.json({
-      success: true,
-      message: "Impact demonstration prepared",
-      impact: impactPayload,
-    });
+    return res.json({ success: true, message: "Impact demonstration prepared", impact: impactPayload });
   } catch (error) {
     console.error("[startImpactDemo] Error:", error);
-    return res
-      .status(500)
-      .json({ success: false, error: "Failed to generate impact demonstration" });
+    return res.status(500).json({ success: false, error: "Failed to generate impact demonstration" });
   }
 }
 
@@ -630,17 +640,12 @@ export async function getImpactDemo(req, res) {
 
     const impact = scan.results?.impactSimulation;
     if (!impact) {
-      return res.status(404).json({
-        success: false,
-        error: "Impact demonstration not generated yet",
-      });
+      return res.status(404).json({ success: false, error: "Impact demonstration not generated yet" });
     }
 
     return res.json({ success: true, impact });
   } catch (error) {
     console.error("[getImpactDemo] Error:", error);
-    return res
-      .status(500)
-      .json({ success: false, error: "Failed to fetch impact demonstration" });
+    return res.status(500).json({ success: false, error: "Failed to fetch impact demonstration" });
   }
 }
