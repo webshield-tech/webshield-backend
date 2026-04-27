@@ -15,25 +15,34 @@ import { urlValidation } from "../utils/validations/url-validation.js";
 const ALLOWED_SCANS = ["nmap", "nikto", "ssl", "sqlmap"];
 
 /**
- * Check if the host is alive before scanning
+ * MANUAL PING CHECK: Endpoint to let user check if target is alive
  */
-async function checkHostAlive(url) {
+export async function pingTarget(req, res) {
   try {
-    // Perform a quick request to check if the host is reachable
-    // We ignore SSL errors to be permissive for security testing targets
-    await axios.get(url, {
-      timeout: 8000,
-      validateStatus: () => true, // Accept any status code as "alive"
-      maxRedirects: 5,
-      httpsAgent: new https.Agent({ rejectUnauthorized: false }),
-    });
-    return { alive: true };
+    const { url } = req.body;
+    if (!url) return res.status(400).json({ success: false, error: "URL is required" });
+
+    const validation = urlValidation(url);
+    if (!validation.valid) return res.status(400).json({ success: false, error: validation.error });
+    
+    const finalUrl = validation.url;
+
+    try {
+      await axios.get(finalUrl, {
+        timeout: 10000,
+        validateStatus: () => true,
+        maxRedirects: 5,
+        httpsAgent: new https.Agent({ rejectUnauthorized: false }),
+      });
+      return res.json({ success: true, message: "Target is reachable and alive." });
+    } catch (error) {
+      return res.status(503).json({ 
+        success: false, 
+        error: "Target Unreachable: The website is offline or blocking connection. Please check the URL." 
+      });
+    }
   } catch (error) {
-    console.error(`[checkHostAlive] Host ${url} is unreachable:`, error.message);
-    return { 
-      alive: false, 
-      error: "Target Unreachable: The website is offline or blocking our connection. Please ensure the URL is correct and the host is alive before scanning." 
-    };
+    return res.status(500).json({ success: false, error: "Ping failed" });
   }
 }
 
@@ -97,7 +106,7 @@ function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quick") {
   if (scanType === "nikto") {
     let args = ["-h", finalUrl, "-maxtime", scanMode === "full" ? "300s" : "120s", "-nointeractive"];
     if (scanMode === "quick") {
-      args.push("-Tuning", "x"); // Quick tuning
+      args.push("-Tuning", "x"); 
     }
     return {
       executable: "nikto",
@@ -216,7 +225,6 @@ async function checkScanQuota(userId, scanType) {
   startOfDay.setHours(0, 0, 0, 0);
 
   if (scanType === "all") {
-    // Separate quota for Full Scans (limit 1 per day)
     const fullScansToday = await Scan.countDocuments({
       userId,
       "results.mode": "all-tools",
@@ -232,7 +240,6 @@ async function checkScanQuota(userId, scanType) {
     }
     return { ok: true };
   } else {
-    // Global quota for Single Scans (limit 10 per day)
     const used = Number(user.usedScan || 0);
     const limit = Number(user.scanLimit || 10);
     const remaining = Math.max(limit - used, 0);
@@ -340,12 +347,6 @@ export async function startScan(req, res) {
     }
     const finalUrl = validation.url;
 
-    // --- PRE-SCAN PING CHECK ---
-    const hostStatus = await checkHostAlive(finalUrl);
-    if (!hostStatus.alive) {
-      return res.status(503).json({ success: false, error: hostStatus.error });
-    }
-
     // Domain Blacklist Check
     const hostname = new URL(finalUrl).hostname.toLowerCase();
     const blacklistedDomains = ['netflix.com', 'google.com', 'facebook.com', 'amazon.com', 'apple.com', 'microsoft.com'];
@@ -400,8 +401,6 @@ export async function startScan(req, res) {
 
       const createdScans = await Scan.insertMany(scanDocs);
       
-      // Note: We don't increment usedScan for full scans per user request (separate limit)
-      
       res.status(201).json({
         success: true,
         message: "All tools scan started",
@@ -415,7 +414,6 @@ export async function startScan(req, res) {
         })),
       });
 
-      // Run sequentially in background
       (async () => {
         for (const scan of createdScans) {
           await Scan.findByIdAndUpdate(scan._id, { status: "running", startedAt: new Date() });

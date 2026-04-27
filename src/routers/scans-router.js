@@ -2,6 +2,7 @@ import express from 'express';
 import { checkAuth } from '../middlewares/user-auth.js';
 import {
   startScan,
+  pingTarget,
   getScanHistory,
   getScanResultsById,
   cancelScan,
@@ -26,6 +27,7 @@ const scanLimiter = rateLimit({
 const scanRouter = express.Router();
 scanRouter.use(checkAuth);
 
+scanRouter.post('/ping', pingTarget);
 scanRouter.post('/start', scanLimiter, startScan);
 scanRouter.get('/history', getScanHistory);
 scanRouter.get('/batch/:batchId', getBatchResults);
