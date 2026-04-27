@@ -25,8 +25,16 @@ export async function pingTarget(req, res) {
     const validation = urlValidation(url);
     if (!validation.valid) return res.status(400).json({ success: false, error: validation.error });
     
-    const finalUrl = validation.url;
+    // Extract clean domain/hostname to ensure we are checking the target's availability, not a specific path
+    let domain;
+    try {
+      domain = new URL(validation.url).hostname;
+    } catch (e) {
+      domain = validation.url.replace(/^https?:\/\//, '').split('/')[0];
+    }
 
+    const finalUrl = `http://${domain}`; // We use HTTP as a baseline availability check
+    const fallbackUrl = `https://${domain}`;
     try {
       // Use a common browser User-Agent to avoid being blocked by WAFs during ping
       const config = {
@@ -42,16 +50,21 @@ export async function pingTarget(req, res) {
       try {
         await axios.get(finalUrl, config);
       } catch (getErr) {
-        // Fallback to HEAD if GET fails
-        await axios.head(finalUrl, config);
+        try {
+          // If HTTP fails, try HTTPS
+          await axios.get(fallbackUrl, config);
+        } catch (httpsErr) {
+          // If both GETs fail, try one last HEAD request on HTTPS
+          await axios.head(fallbackUrl, config);
+        }
       }
       
-      return res.json({ success: true, message: "Target is reachable and alive." });
+      return res.json({ success: true, message: "Target is reachable and alive.", domain });
     } catch (error) {
-      console.error(`[pingTarget] Host ${finalUrl} is unreachable:`, error.message);
+      console.error(`[pingTarget] Host ${domain} is unreachable:`, error.message);
       return res.status(503).json({ 
         success: false, 
-        error: "Target Unreachable: Host is not responding. Ensure the URL is correct." 
+        error: `Target Unreachable: ${domain} is not responding. Ensure the domain is correct.` 
       });
     }
   } catch (error) {
@@ -238,17 +251,20 @@ async function checkScanQuota(userId, scanType) {
   startOfDay.setHours(0, 0, 0, 0);
 
   if (scanType === "all") {
-    const fullScansToday = await Scan.countDocuments({
+    // Count unique batchIds for "all-tools" mode today to ensure one auto-scan = 1 count
+    const fullScansToday = await Scan.distinct("results.batchId", {
       userId,
       "results.mode": "all-tools",
       createdAt: { $gte: startOfDay }
     });
 
-    if (fullScansToday >= 1) {
+    const count = fullScansToday.length;
+
+    if (count >= 1) {
       return {
         ok: false,
         code: 403,
-        error: "Daily Full Scan limit reached (1). Buy Premium for unlimited deep audits.",
+        error: "Daily Full Scan limit reached (1/1). Buy Premium for unlimited deep audits.",
       };
     }
     return { ok: true };
@@ -427,10 +443,16 @@ export async function startScan(req, res) {
         })),
       });
 
+      // Launch tools sequentially in background
       (async () => {
-        for (const scan of createdScans) {
-          await Scan.findByIdAndUpdate(scan._id, { status: "running", startedAt: new Date() });
-          await launchScanInBackground(String(scan._id), finalUrl, scan.scanType, cookies, scanMode);
+        try {
+          for (const scan of createdScans) {
+            await Scan.findByIdAndUpdate(scan._id, { status: "running", startedAt: new Date() });
+            // Sequential execution ensures we don't saturate the server resources
+            await launchScanInBackground(String(scan._id), finalUrl, scan.scanType, cookies, scanMode);
+          }
+        } catch (bgError) {
+          console.error("[SCAN_ORCHESTRATOR] Critical failure in background loop:", bgError);
         }
       })();
 
