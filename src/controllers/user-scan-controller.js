@@ -27,53 +27,58 @@ export async function pingTarget(req, res) {
     const validation = urlValidation(url);
     if (!validation.valid) return res.status(400).json({ success: false, error: validation.error });
     
-    // Extract host and port to ensure we check the exact target availability
+    // Extract host and port
     let targetHost;
     let targetPort;
     try {
       const parsed = new URL(validation.url);
       targetHost = parsed.hostname;
-      targetPort = parsed.port;
+      targetPort = parsed.port || (parsed.protocol === 'https:' ? '443' : '80');
     } catch (e) {
       const parts = validation.url.replace(/^https?:\/\//, '').split('/')[0].split(':');
       targetHost = parts[0];
-      targetPort = parts[1];
+      targetPort = parts[1] || '80';
     }
 
-    const portSuffix = targetPort ? `:${targetPort}` : "";
-    const finalUrl = `http://${targetHost}${portSuffix}`;
-    const fallbackUrl = `https://${targetHost}${portSuffix}`;
-    
-    try {
-      // Use a common browser User-Agent to avoid being blocked by WAFs during ping
-      const config = {
-        timeout: 10000,
-        validateStatus: () => true,
-        maxRedirects: 5,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        },
-        httpsAgent: new https.Agent({ rejectUnauthorized: false }),
-      };
+    // --- PHASE 1: NATIVE SYSTEM PING (Like terminal) ---
+    const { exec } = await import('child_process');
+    const systemPing = () => new Promise((resolve) => {
+      // -c 1 (1 packet), -W 2 (2 sec timeout)
+      exec(`ping -c 1 -W 2 ${targetHost}`, (error) => {
+        resolve(!error);
+      });
+    });
 
-      try {
-        await axios.get(finalUrl, config);
-      } catch (getErr) {
-        try {
-          // If HTTP fails, try HTTPS
-          await axios.get(fallbackUrl, config);
-        } catch (httpsErr) {
-          // If both GETs fail, try one last HEAD request on HTTPS
-          await axios.head(fallbackUrl, config);
-        }
-      }
-      
-      return res.json({ success: true, message: "Target is reachable and alive.", host: targetHost });
-    } catch (error) {
-      console.error(`[pingTarget] Host ${targetHost}${portSuffix} is unreachable:`, error.message);
+    // --- PHASE 2: SOCKET CHECK (For specific port) ---
+    const net = await import('net');
+    const socketCheck = (host, port) => new Promise((resolve) => {
+      const socket = net.connect(port, host, () => {
+        socket.destroy();
+        resolve(true);
+      });
+      socket.setTimeout(3000);
+      socket.on('error', () => resolve(false));
+      socket.on('timeout', () => {
+        socket.destroy();
+        resolve(false);
+      });
+    });
+
+    const isPingable = await systemPing();
+    const isPortOpen = await socketCheck(targetHost, parseInt(targetPort));
+
+    if (isPingable || isPortOpen) {
+      return res.json({ 
+        success: true, 
+        message: "Target is reachable and alive.", 
+        host: targetHost,
+        method: isPingable ? "icmp" : "tcp"
+      });
+    } else {
+      console.error(`[pingTarget] Host ${targetHost} failed both ICMP and TCP probes.`);
       return res.status(503).json({ 
         success: false, 
-        error: `Target Unreachable: ${targetHost}${portSuffix} is not responding. Ensure the target and port are correct.` 
+        error: `Target Unreachable: ${targetHost} is not responding to ICMP ping or port ${targetPort} probes.` 
       });
     }
   } catch (error) {
