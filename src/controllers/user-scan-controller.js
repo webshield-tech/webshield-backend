@@ -27,16 +27,23 @@ export async function pingTarget(req, res) {
     const validation = urlValidation(url);
     if (!validation.valid) return res.status(400).json({ success: false, error: validation.error });
     
-    // Extract clean domain/hostname to ensure we are checking the target's availability, not a specific path
-    let domain;
+    // Extract host and port to ensure we check the exact target availability
+    let targetHost;
+    let targetPort;
     try {
-      domain = new URL(validation.url).hostname;
+      const parsed = new URL(validation.url);
+      targetHost = parsed.hostname;
+      targetPort = parsed.port;
     } catch (e) {
-      domain = validation.url.replace(/^https?:\/\//, '').split('/')[0];
+      const parts = validation.url.replace(/^https?:\/\//, '').split('/')[0].split(':');
+      targetHost = parts[0];
+      targetPort = parts[1];
     }
 
-    const finalUrl = `http://${domain}`; // We use HTTP as a baseline availability check
-    const fallbackUrl = `https://${domain}`;
+    const portSuffix = targetPort ? `:${targetPort}` : "";
+    const finalUrl = `http://${targetHost}${portSuffix}`;
+    const fallbackUrl = `https://${targetHost}${portSuffix}`;
+    
     try {
       // Use a common browser User-Agent to avoid being blocked by WAFs during ping
       const config = {
@@ -61,12 +68,12 @@ export async function pingTarget(req, res) {
         }
       }
       
-      return res.json({ success: true, message: "Target is reachable and alive.", domain });
+      return res.json({ success: true, message: "Target is reachable and alive.", host: targetHost });
     } catch (error) {
-      console.error(`[pingTarget] Host ${domain} is unreachable:`, error.message);
+      console.error(`[pingTarget] Host ${targetHost}${portSuffix} is unreachable:`, error.message);
       return res.status(503).json({ 
         success: false, 
-        error: `Target Unreachable: ${domain} is not responding. Ensure the domain is correct.` 
+        error: `Target Unreachable: ${targetHost}${portSuffix} is not responding. Ensure the target and port are correct.` 
       });
     }
   } catch (error) {
