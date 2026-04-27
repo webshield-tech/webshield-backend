@@ -163,9 +163,15 @@ function launchScanInBackground(scanId, finalUrl, scanType, cookies = "", scanMo
       console.log(`[SCAN_SERVICE] Process initiated successfully for ID: ${scanId}`);
     } catch (error) {
       console.error("[SCAN_SERVICE] Runtime error:", error?.message || error);
+      const existingScan = await Scan.findById(scanId).lean();
+      const mergedResults = {
+        ...(existingScan?.results || {}),
+        error: error?.message || "Scan failed to start"
+      };
+
       await Scan.findByIdAndUpdate(scanId, {
         status: "failed",
-        results: { error: error?.message || "Scan failed to start" },
+        results: mergedResults,
         updatedAt: new Date(),
         completedAt: new Date(),
       });

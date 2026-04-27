@@ -139,9 +139,15 @@ export async function startProcess(scanId, executable, args = [], opts = {}) {
           }
         }
 
+        const existingScan = await Scan.findById(scanId).lean();
+        const mergedResults = {
+          ...(existingScan?.results || {}),
+          ...parsed,
+        };
+
         await Scan.findByIdAndUpdate(scanId, {
           status: status,
-          results: parsed,
+          results: mergedResults,
           updatedAt: new Date(),
           completedAt: new Date(),
         });
