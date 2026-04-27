@@ -14,6 +14,9 @@ import {
   generateAIReportForScan,
   downloadReport,
   viewReport,
+  generateBatchAIReport,
+  downloadBatchReport,
+  viewBatchReport,
 } from '../controllers/aiReport-controller.js';
 
 import rateLimit from 'express-rate-limit';
@@ -39,5 +42,8 @@ scanRouter.get('/:id/impact', getImpactDemo);
 scanRouter.post('/:id/report/generate', generateAIReportForScan);
 scanRouter.get('/:id/report/download', downloadReport);
 scanRouter.get('/:id/report/view', viewReport);
+scanRouter.post('/batch/:batchId/report/generate', generateBatchAIReport);
+scanRouter.get('/batch/:batchId/report/download', downloadBatchReport);
+scanRouter.get('/batch/:batchId/report/view', viewBatchReport);
 
 export default scanRouter;

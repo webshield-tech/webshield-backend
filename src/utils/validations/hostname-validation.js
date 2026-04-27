@@ -20,7 +20,15 @@ export function validateHostname(hostname) {
     throw new Error('Invalid hostname format');
   }
   
-  // Block internal/private IPs and localhost
+  const allowLocalTargets =
+    String(
+      process.env.ALLOW_LOCAL_TARGETS ??
+        (process.env.NODE_ENV === "production" ? "false" : "true")
+    )
+      .trim()
+      .toLowerCase() === "true";
+
+  // Block internal/private IPs and localhost (unless explicitly enabled for local demo)
   const blockedPatterns = [
     'localhost',
     '127.0.0.1',
@@ -44,9 +52,11 @@ export function validateHostname(hostname) {
     '172.31.'
   ];
   
-  for (const pattern of blockedPatterns) {
-    if (hostname.includes(pattern)) {
-      throw new Error('Scanning internal networks is not allowed');
+  if (!allowLocalTargets) {
+    for (const pattern of blockedPatterns) {
+      if (hostname.includes(pattern)) {
+        throw new Error('Scanning internal networks is not allowed');
+      }
     }
   }
   

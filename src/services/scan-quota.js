@@ -7,10 +7,11 @@ export async function refundFailedScanQuota(scanId) {
       _id: scanId,
       quotaRefunded: { $ne: true },
     })
-      .select("userId")
+      .select("userId results.mode")
       .lean();
 
     if (!scan?.userId) return;
+    if (scan?.results?.mode === "all-tools") return;
 
     const markResult = await Scan.updateOne(
       { _id: scanId, quotaRefunded: { $ne: true } },

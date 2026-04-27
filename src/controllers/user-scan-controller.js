@@ -13,6 +13,8 @@ import { validateHostname } from "../utils/validations/hostname-validation.js";
 import { urlValidation } from "../utils/validations/url-validation.js";
 
 const ALLOWED_SCANS = ["nmap", "nikto", "ssl", "sqlmap"];
+const DAILY_PER_TOOL_LIMIT = 2;
+const DAILY_AUTO_LIMIT = 2;
 
 /**
  * MANUAL PING CHECK: Endpoint to let user check if target is alive
@@ -87,6 +89,140 @@ function resolveHostname(url) {
   return hostname;
 }
 
+function resolveSslTarget(url) {
+  const parsed = new URL(url);
+  validateHostname(parsed.hostname);
+  // For http targets, scan default TLS endpoint on 443.
+  // For https targets with explicit port, honor that port.
+  if (parsed.protocol === "https:" && parsed.port) {
+    return `${parsed.hostname}:${parsed.port}`;
+  }
+  return parsed.hostname;
+}
+
+function extractDvwaToken(html = "") {
+  const match = String(html).match(/name=['"]user_token['"]\s+value=['"]([^'"]+)['"]/i);
+  return match ? match[1] : "";
+}
+
+function applySetCookie(cookieJar, setCookieHeaders = []) {
+  for (const cookieLine of setCookieHeaders || []) {
+    const kv = String(cookieLine).split(";")[0];
+    const idx = kv.indexOf("=");
+    if (idx <= 0) continue;
+    const key = kv.slice(0, idx).trim();
+    const val = kv.slice(idx + 1).trim();
+    if (key) cookieJar[key] = val;
+  }
+}
+
+function buildCookieHeader(cookieJar) {
+  return Object.entries(cookieJar)
+    .map(([k, v]) => `${k}=${v}`)
+    .join("; ");
+}
+
+async function prepareDvwaSqlmapContext(finalUrl) {
+  const parsed = new URL(finalUrl);
+  const origin = `${parsed.protocol}//${parsed.host}`;
+  const localHost = ["localhost", "127.0.0.1"].includes(parsed.hostname);
+  if (!localHost) return null;
+
+  const cfg = {
+    timeout: 12000,
+    validateStatus: () => true,
+    maxRedirects: 2,
+  };
+
+  const probe = await axios.get(`${origin}/login.php`, cfg);
+  if (!/Damn Vulnerable Web Application/i.test(String(probe.data || ""))) {
+    return null;
+  }
+
+  const jar = {};
+
+  // 1) setup/reset DB
+  const setupPage = await axios.get(`${origin}/setup.php`, cfg);
+  applySetCookie(jar, setupPage.headers?.["set-cookie"] || []);
+  const setupToken = extractDvwaToken(setupPage.data);
+  if (setupToken) {
+    const setupResp = await axios.post(
+      `${origin}/setup.php`,
+      new URLSearchParams({
+        create_db: "Create / Reset Database",
+        user_token: setupToken,
+      }).toString(),
+      {
+        ...cfg,
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Cookie: buildCookieHeader(jar),
+        },
+      }
+    );
+    applySetCookie(jar, setupResp.headers?.["set-cookie"] || []);
+  }
+
+  // 2) login with default DVWA creds
+  const loginPage = await axios.get(`${origin}/login.php`, {
+    ...cfg,
+    headers: { Cookie: buildCookieHeader(jar) },
+  });
+  applySetCookie(jar, loginPage.headers?.["set-cookie"] || []);
+  const loginToken = extractDvwaToken(loginPage.data);
+  if (loginToken) {
+    const loginResp = await axios.post(
+      `${origin}/login.php`,
+      new URLSearchParams({
+        username: "admin",
+        password: "password",
+        Login: "Login",
+        user_token: loginToken,
+      }).toString(),
+      {
+        ...cfg,
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Cookie: buildCookieHeader(jar),
+        },
+      }
+    );
+    applySetCookie(jar, loginResp.headers?.["set-cookie"] || []);
+  }
+
+  // 3) set security to low
+  const securityPage = await axios.get(`${origin}/security.php`, {
+    ...cfg,
+    headers: { Cookie: buildCookieHeader(jar) },
+  });
+  applySetCookie(jar, securityPage.headers?.["set-cookie"] || []);
+  const secToken = extractDvwaToken(securityPage.data);
+  if (secToken) {
+    const secResp = await axios.post(
+      `${origin}/security.php`,
+      new URLSearchParams({
+        security: "low",
+        seclev_submit: "Submit",
+        user_token: secToken,
+      }).toString(),
+      {
+        ...cfg,
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Cookie: buildCookieHeader(jar),
+        },
+      }
+    );
+    applySetCookie(jar, secResp.headers?.["set-cookie"] || []);
+  }
+
+  const cookieHeader = buildCookieHeader(jar);
+  return {
+    sqlmapTarget: `${origin}/vulnerabilities/sqli/?id=1&Submit=Submit`,
+    cookies: cookieHeader || "",
+  };
+}
+
 function shouldEnableNmapOsDetection() {
   const forceEnable = String(process.env.NMAP_ENABLE_OS_DETECTION || "")
     .trim()
@@ -106,7 +242,7 @@ function isRunningAsRoot() {
   return false;
 }
 
-function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quick") {
+async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quick") {
   const hostname = resolveHostname(finalUrl);
 
   if (scanType === "nmap") {
@@ -144,17 +280,33 @@ function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quick") {
   if (scanType === "ssl") {
     return {
       executable: "sslscan",
-      args: ["--no-colour", "--show-certificate", hostname],
+      args: ["--no-colour", "--show-certificate", resolveSslTarget(finalUrl)],
       opts: { timeoutMs: 120000, maxRaw: 200000 },
     };
   }
 
   if (scanType === "sqlmap") {
+    let sqlmapTarget = buildSqlmapTarget(finalUrl);
+    let sqlmapCookies = cookies || "";
+
+    // Local DVWA convenience: auto-login and use SQLi endpoint if user passed only base URL.
+    if (!sqlmapCookies && !finalUrl.includes("?")) {
+      try {
+        const dvwa = await prepareDvwaSqlmapContext(finalUrl);
+        if (dvwa?.sqlmapTarget) {
+          sqlmapTarget = dvwa.sqlmapTarget;
+          sqlmapCookies = dvwa.cookies || "";
+        }
+      } catch (dvwaErr) {
+        console.warn("[sqlmap] DVWA context prep skipped:", dvwaErr?.message || dvwaErr);
+      }
+    }
+
     const level = scanMode === "full" ? "5" : "2";
     const risk  = scanMode === "full" ? "3" : "1";
 
     const args = [
-      "-u", buildSqlmapTarget(finalUrl),
+      "-u", sqlmapTarget,
       "--batch",
       "--level", level,
       "--risk",  risk,
@@ -173,8 +325,8 @@ function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quick") {
       args.push("--forms", "--crawl", "1");
     }
 
-    if (cookies) {
-      args.push("--cookie", cookies);
+    if (sqlmapCookies) {
+      args.push("--cookie", sqlmapCookies);
     }
 
     return {
@@ -199,7 +351,7 @@ function launchScanInBackground(scanId, finalUrl, scanType, cookies = "", scanMo
 
       console.log(`[SCAN_SERVICE] Starting ${scanType} scan (Mode: ${scanMode}) for: ${finalUrl} (ID: ${scanId})`);
 
-      const command = getScanCommand(scanType, finalUrl, cookies, scanMode);
+      const command = await getScanCommand(scanType, finalUrl, cookies, scanMode);
       
       command.opts.onComplete = (id, status, parsed) => {
         resolve({ success: status === "completed", status, parsed });
@@ -235,9 +387,41 @@ function launchScanInBackground(scanId, finalUrl, scanType, cookies = "", scanMo
   });
 }
 
-/**
- * Check Quota: 1 Full Scan per day, 10 Single Scans per day
- */
+async function getTodayScanStats(userId) {
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+
+  const scansToday = await Scan.find({
+    userId,
+    createdAt: { $gte: startOfDay },
+  })
+    .select("scanType results.batchId results.mode")
+    .lean();
+
+  const byTool = { nmap: 0, nikto: 0, ssl: 0, sqlmap: 0 };
+  const autoBatchIds = new Set();
+
+  for (const scan of scansToday) {
+    const type = String(scan.scanType || "");
+    const isAutoMode = scan?.results?.mode === "all-tools";
+    if (isAutoMode && scan?.results?.batchId) {
+      autoBatchIds.add(String(scan.results.batchId));
+      continue;
+    }
+    if (Object.prototype.hasOwnProperty.call(byTool, type)) {
+      byTool[type] += 1;
+    }
+  }
+
+  const singleUsed = byTool.nmap + byTool.nikto + byTool.ssl + byTool.sqlmap;
+  return {
+    byTool,
+    autoUsed: autoBatchIds.size,
+    singleUsed,
+    singleLimit: DAILY_PER_TOOL_LIMIT * ALLOWED_SCANS.length,
+  };
+}
+
 async function checkScanQuota(userId, scanType) {
   const user = await User.findById(userId)
     .select("scanLimit usedScan")
@@ -247,43 +431,29 @@ async function checkScanQuota(userId, scanType) {
     return { ok: false, code: 404, error: "User not found" };
   }
 
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
+  const stats = await getTodayScanStats(userId);
 
   if (scanType === "all") {
-    // Count unique batchIds for "all-tools" mode today to ensure one auto-scan = 1 count
-    const fullScansToday = await Scan.distinct("results.batchId", {
-      userId,
-      "results.mode": "all-tools",
-      createdAt: { $gte: startOfDay }
-    });
-
-    const count = fullScansToday.length;
-
-    if (count >= 1) {
+    if (stats.autoUsed >= DAILY_AUTO_LIMIT) {
       return {
         ok: false,
         code: 403,
-        error: "Daily Full Scan limit reached (1/1). Buy Premium for unlimited deep audits.",
+        error: `Daily Auto Full Scan limit reached (${DAILY_AUTO_LIMIT}/${DAILY_AUTO_LIMIT}).`,
+        quota: stats,
       };
     }
-    return { ok: true };
+    return { ok: true, quota: stats };
   } else {
-    const used = Number(user.usedScan || 0);
-    const limit = Number(user.scanLimit || 10);
-    const remaining = Math.max(limit - used, 0);
-
-    if (remaining <= 0) {
+    const usedForTool = Number(stats.byTool[scanType] || 0);
+    if (usedForTool >= DAILY_PER_TOOL_LIMIT) {
       return {
         ok: false,
         code: 403,
-        error: `Daily single scan limit reached (${limit}). Buy Premium for more scans.`,
-        remaining,
-        scanLimit: limit,
-        usedScan: used,
+        error: `Daily ${scanType.toUpperCase()} limit reached (${DAILY_PER_TOOL_LIMIT}/${DAILY_PER_TOOL_LIMIT}).`,
+        quota: stats,
       };
     }
-    return { ok: true, remaining, scanLimit: limit, usedScan: used };
+    return { ok: true, quota: stats };
   }
 }
 
@@ -391,9 +561,7 @@ export async function startScan(req, res) {
       return res.status(quota.code).json({
         success: false,
         error: quota.error,
-        remaining: quota.remaining,
-        scanLimit: quota.scanLimit,
-        usedScan: quota.usedScan,
+        quota: quota.quota,
       });
     }
 
@@ -430,6 +598,10 @@ export async function startScan(req, res) {
 
       const createdScans = await Scan.insertMany(scanDocs);
       
+      await User.findByIdAndUpdate(userId, {
+        $set: { usedScan: quota.quota.singleUsed },
+      });
+
       res.status(201).json({
         success: true,
         message: "All tools scan started",
@@ -441,6 +613,7 @@ export async function startScan(req, res) {
           targetUrl: s.targetUrl,
           status: s.status,
         })),
+        quota: quota.quota,
       });
 
       // Launch tools sequentially in background
@@ -470,7 +643,7 @@ export async function startScan(req, res) {
 
     const updatedUser = await User.findByIdAndUpdate(
       userId,
-      { $inc: { usedScan: 1 } },
+      { $set: { usedScan: quota.quota.singleUsed + 1 } },
       { new: true }
     )
       .select("usedScan scanLimit")
@@ -492,6 +665,7 @@ export async function startScan(req, res) {
             scanLimit: updatedUser.scanLimit,
           }
         : undefined,
+      quota: quota.quota,
     });
 
     launchScanInBackground(String(scanDoc._id), finalUrl, scanType, cookies, scanMode);
