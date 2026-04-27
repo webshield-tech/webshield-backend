@@ -1,5 +1,4 @@
 import axios from "axios";
-import https from "https";
 import { randomUUID } from "crypto";
 import { Scan } from "../models/scans-mongoose.js";
 import { User } from "../models/users-mongoose.js";
@@ -40,45 +39,45 @@ export async function pingTarget(req, res) {
       targetPort = parts[1] || '80';
     }
 
-    // --- PHASE 1: NATIVE SYSTEM PING (Like terminal) ---
-    const { exec } = await import('child_process');
-    const systemPing = () => new Promise((resolve) => {
-      // -c 1 (1 packet), -W 2 (2 sec timeout)
-      exec(`ping -c 1 -W 2 ${targetHost}`, (error) => {
-        resolve(!error);
-      });
-    });
+    const probeConfig = {
+      timeout: 8000,
+      maxRedirects: 5,
+      validateStatus: () => true,
+      headers: {
+        "User-Agent": "WebShield-Availability-Check/1.0",
+        Accept: "*/*",
+      },
+      responseType: "text",
+    };
 
-    // --- PHASE 2: SOCKET CHECK (For specific port) ---
-    const net = await import('net');
-    const socketCheck = (host, port) => new Promise((resolve) => {
-      const socket = net.connect(port, host, () => {
-        socket.destroy();
-        resolve(true);
-      });
-      socket.setTimeout(3000);
-      socket.on('error', () => resolve(false));
-      socket.on('timeout', () => {
-        socket.destroy();
-        resolve(false);
-      });
-    });
+    const probeViaHttp = async (method) => {
+      try {
+        const response = await axios.request({
+          method,
+          url: validation.url,
+          ...probeConfig,
+        });
+        return { ok: true, status: response.status };
+      } catch (error) {
+        return { ok: false, error };
+      }
+    };
 
-    const isPingable = await systemPing();
-    const isPortOpen = await socketCheck(targetHost, parseInt(targetPort));
+    const headProbe = await probeViaHttp("HEAD");
+    const getProbe = headProbe.ok ? null : await probeViaHttp("GET");
 
-    if (isPingable || isPortOpen) {
+    if (headProbe.ok || getProbe?.ok) {
       return res.json({ 
         success: true, 
         message: "Target is reachable and alive.", 
         host: targetHost,
-        method: isPingable ? "icmp" : "tcp"
+        method: headProbe.ok ? "http-head" : "http-get"
       });
     } else {
-      console.error(`[pingTarget] Host ${targetHost} failed both ICMP and TCP probes.`);
+      console.error(`[pingTarget] Host ${targetHost} failed HTTP reachability probes.`);
       return res.status(503).json({ 
         success: false, 
-        error: `Target Unreachable: ${targetHost} is not responding to ICMP ping or port ${targetPort} probes.` 
+        error: `Target Unreachable: ${targetHost} did not respond to HTTP reachability probes on port ${targetPort}.` 
       });
     }
   } catch (error) {
