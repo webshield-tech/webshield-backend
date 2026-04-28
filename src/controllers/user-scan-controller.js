@@ -420,8 +420,12 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
       }
     }
 
-    const level = scanMode === "full" ? "5" : "2";
-    const risk  = scanMode === "full" ? "3" : "1";
+    const level = scanMode === "full" ? "5" : "3";
+    const risk  = scanMode === "full" ? "3" : "2";
+
+    // Unique output dir per scan prevents cached "not injectable" sessions
+    // from a previous run poisoning the results of this one.
+    const outputDir = `/tmp/sqlmap-${Date.now()}`;
 
     const args = [
       "-u", sqlmapTarget,
@@ -433,8 +437,9 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
       "--retries", "2",
       "--random-agent",
       "--technique", "BEUST",
+      "--flush-session",   // always start fresh — never resume a stale cache
       "--disable-coloring",
-      "--output-dir", "/tmp/sqlmap-output",
+      "--output-dir", outputDir,
     ];
 
     if (scanMode === "full") {
@@ -604,14 +609,40 @@ function inferImpact(scan) {
   }
 
   if (scan.scanType === "nmap") {
-    const openPorts = Number((r.openPorts || []).length);
+    const portsArray = Array.isArray(r.openPorts) ? r.openPorts : [];
     const cveCount = Number((r.cveList || []).length);
-    score = Math.min(openPorts * 8 + cveCount * 15 + 15, 85);
 
-    if (openPorts > 0) evidence.push(`${openPorts} open ports are exposed.`);
-    if (cveCount > 0)
-      evidence.push(`${cveCount} CVE references were found in output.`);
-    if (openPorts === 0) evidence.push("No open ports were detected.");
+    // Standard web ports are expected — they should not inflate risk
+    const STANDARD_WEB_PORTS = new Set([80, 443]);
+    const nonStandardPorts = portsArray.filter((p) => {
+      const match = String(p).match(/^(\d+)\//);
+      const portNum = match ? parseInt(match[1], 10) : NaN;
+      return !STANDARD_WEB_PORTS.has(portNum);
+    });
+
+    const onlyStandardPorts =
+      portsArray.length > 0 && nonStandardPorts.length === 0;
+
+    if (portsArray.length === 0) {
+      score = 5;
+      evidence.push("No open ports were detected.");
+    } else if (onlyStandardPorts && cveCount === 0) {
+      // Only ports 80/443 open, no CVEs → safe, expected web server behaviour
+      score = 10;
+      evidence.push(
+        "Only standard web ports (80, 443) are open — expected behaviour for a web server."
+      );
+    } else {
+      score = Math.min(nonStandardPorts.length * 10 + cveCount * 15, 85);
+      if (nonStandardPorts.length > 0)
+        evidence.push(
+          `${nonStandardPorts.length} non-standard port(s) are exposed.`
+        );
+      if (onlyStandardPorts)
+        evidence.push("Standard web ports (80, 443) are open.");
+      if (cveCount > 0)
+        evidence.push(`${cveCount} CVE references were found in output.`);
+    }
   }
 
   if (scan.scanType === "ssl") {
