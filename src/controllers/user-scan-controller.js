@@ -371,7 +371,11 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
   }
 
   if (scanType === "nikto") {
-    let args = ["-h", finalUrl, "-maxtime", scanMode === "full" ? "300s" : "120s", "-nointeractive"];
+    // Nikto sometimes fails to resolve localhost (IPv6 ::1 issues). Force 127.0.0.1.
+    const niktoUrl = finalUrl.replace(/^https?:\/\/localhost(:\d+)?/i, (match, port) => {
+      return match.replace("localhost", "127.0.0.1");
+    });
+    let args = ["-h", niktoUrl, "-maxtime", scanMode === "full" ? "300s" : "120s", "-nointeractive"];
     if (scanMode === "quick") {
       args.push("-Tuning", "b");
     }
@@ -400,14 +404,16 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
     let sqlmapTarget = sqlmapUrl || buildSqlmapTarget(finalUrl);
     let sqlmapCookies = cookies || "";
 
-    // Local DVWA convenience: auto-login and use SQLi endpoint if user passed only base URL.
-    // Only do this if we're using auto-constructed target (not provided by user)
-    if (!sqlmapUrl && !sqlmapCookies && !finalUrl.includes("?")) {
+    // Local DVWA convenience: auto-login to fetch cookies
+    if (!sqlmapCookies) {
       try {
         const dvwa = await prepareDvwaSqlmapContext(finalUrl);
-        if (dvwa?.sqlmapTarget) {
-          sqlmapTarget = dvwa.sqlmapTarget;
-          sqlmapCookies = dvwa.cookies || "";
+        if (dvwa?.cookies) {
+          sqlmapCookies = dvwa.cookies;
+          // Only auto-construct the target if the user didn't explicitly provide one
+          if (!sqlmapUrl && !finalUrl.includes("?")) {
+            sqlmapTarget = dvwa.sqlmapTarget;
+          }
         }
       } catch (dvwaErr) {
         console.warn("[sqlmap] DVWA context prep skipped:", dvwaErr?.message || dvwaErr);
