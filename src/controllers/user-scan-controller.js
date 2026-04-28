@@ -438,9 +438,10 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
     ];
 
     if (scanMode === "full") {
-      args.push("--forms", "--crawl", "3", "--dump-all");
+      args.push("--dump-all");
+      if (!sqlmapTarget.includes("?")) args.push("--forms", "--crawl", "3");
     } else {
-      args.push("--forms", "--crawl", "1");
+      if (!sqlmapTarget.includes("?")) args.push("--forms", "--crawl", "1");
     }
 
     if (sqlmapCookies) {
