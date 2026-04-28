@@ -206,32 +206,59 @@ export function parseSqlmap(rawOutput = "", target = "") {
     const lower = line.toLowerCase();
 
     // Detect that sqlmap actually ran against the target
-    if (/testing url|testing connection|sqlmap resumed|heuristic|target url/i.test(line)) {
+    if (/testing url|testing connection|sqlmap resumed|heuristic|target url|starting detection/i.test(line)) {
       scanRan = true;
     }
 
-    // Primary injectable detection
-    if (
-      /is vulnerable|is injectable|parameter.*is vulnerable|parameter.*injectable/i.test(line) ||
-      /identified the following injection point/i.test(line) ||
-      lower.includes("sql injection") ||
-      /type:\s*(boolean|error|time|union|stacked)/i.test(line)
-    ) {
+    // "parameter 'id' appears to be '...' injectable"  — SQLMap's primary confirmation line
+    if (/parameter\s+.+appears\s+to\s+be.+injectable/i.test(line)) {
       vulnerable = true;
       if (!vulnerabilities.includes(line)) vulnerabilities.push(line);
     }
 
-    // Injection type classification
-    const typeMatch = line.match(/Type:\s*(.+)/i);
+    // "is vulnerable" / "is injectable" anywhere
+    if (/\bis\s+(?:vulnerable|injectable)\b/i.test(line)) {
+      vulnerable = true;
+      if (!vulnerabilities.includes(line)) vulnerabilities.push(line);
+    }
+
+    // "identified the following injection point(s)"
+    if (/identified the following injection point/i.test(line)) {
+      vulnerable = true;
+      if (!vulnerabilities.includes(line)) vulnerabilities.push(line);
+    }
+
+    // "sql injection" anywhere
+    if (lower.includes("sql injection")) {
+      vulnerable = true;
+      if (!vulnerabilities.includes(line)) vulnerabilities.push(line);
+    }
+
+    // "parameter.*is vulnerable|parameter.*injectable"
+    if (/parameter.*(?:is vulnerable|injectable)/i.test(line)) {
+      vulnerable = true;
+      if (!vulnerabilities.includes(line)) vulnerabilities.push(line);
+    }
+
+    // Type: boolean-based blind / error-based / time-based / union / stacked / inline
+    if (/type:\s*(boolean|error|time|union|stacked|inline)/i.test(line)) {
+      vulnerable = true;
+      if (!vulnerabilities.includes(line)) vulnerabilities.push(line);
+    }
+
+    // Injection type block inside the summary section: "    Type: boolean-based blind"
+    const typeMatch = line.match(/^\s*Type:\s*(.+)$/i);
     if (typeMatch) {
-      injectionTypes.push(typeMatch[1].trim());
+      const t = typeMatch[1].trim();
+      if (!injectionTypes.includes(t)) injectionTypes.push(t);
       vulnerable = true;
     }
 
-    // Payload lines confirm injection
-    if (/Payload:\s*.+/i.test(line)) {
+    // Payload lines always confirm injection
+    if (/^\s*Payload:\s*.+/i.test(line)) {
       vulnerable = true;
-      injectionPoints.push(line);
+      if (!injectionPoints.includes(line)) injectionPoints.push(line);
+      if (!vulnerabilities.includes(line)) vulnerabilities.push(line);
     }
 
     // "Not injectable" warnings
@@ -245,13 +272,13 @@ export function parseSqlmap(rawOutput = "", target = "") {
     const dbMatch = line.match(/^\[\d+\]\s+([\w-]+)/);
     if (dbMatch) databases.add(dbMatch[1]);
 
-    // Also from "available databases [N]:" lines and subsequent entries
-    if (/table:/i.test(line) || /tables/i.test(lower)) {
+    // Table lines
+    if (/table:/i.test(line) || /\btables\b/i.test(lower)) {
       if (!tables.includes(line)) tables.push(line);
     }
 
-    // Parameter / injection point lines
-    if (/parameter:|injection point|injection:|place:/i.test(line)) {
+    // Parameter / injection point descriptor lines
+    if (/^\s*(?:parameter|place|injection point|injection):/i.test(line)) {
       if (!injectionPoints.includes(line)) injectionPoints.push(line);
     }
   }
@@ -262,15 +289,22 @@ export function parseSqlmap(rawOutput = "", target = "") {
   const dbmsMatch = out.match(/back-end DBMS:\s*([^\n\r]+)/i);
   const dbms = dbmsMatch ? dbmsMatch[1].trim() : null;
 
+  // back-end DBMS identified => sqlmap fingerprinted the database => injection confirmed
+  if (dbms) {
+    vulnerable = true;
+  }
+
   const payloadMatch = out.match(/Payload:\s*([^\n\r]+)/i);
   const payload = payloadMatch ? payloadMatch[1].trim() : null;
 
+  const uniqueTypes = [...new Set(injectionTypes)];
+
   return {
     tool: "sqlmap",
-    success: scanRan,       // scan ran OK (even if nothing found)
-    vulnerable,             // actual SQL injection found
+    success: scanRan,
+    vulnerable,
     vulnerabilities: vulnerabilities.slice(0, 100),
-    injectionTypes,
+    injectionTypes: uniqueTypes,
     warnings: warnings.slice(0, 50),
     databases: Array.from(databases),
     tables: tables.slice(0, 200),
@@ -282,12 +316,12 @@ export function parseSqlmap(rawOutput = "", target = "") {
       findingsCount: vulnerabilities.length,
       databasesFound: databases.size,
       tablesFound: tables.length,
-      injectionTypes,
+      injectionTypes: uniqueTypes,
     },
     rawOutput: out,
     target,
     summary: vulnerable
-      ? `SQL injection confirmed (DB: ${dbms || "unknown"}, Types: ${injectionTypes.join(", ") || "detected"})`
+      ? `SQL injection confirmed (DB: ${dbms || "unknown"}, Types: ${uniqueTypes.join(", ") || "detected"})`
       : scanRan
       ? "Scan completed — no SQL injection detected on tested parameters"
       : "Scan did not complete successfully",
