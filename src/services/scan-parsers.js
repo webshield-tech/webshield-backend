@@ -311,6 +311,8 @@ export function parseSsl(rawOutput = "", target = "") {
   // Track whether sslscan actually ran and produced output
   const looksLikeSslscan =
     /SSL\/TLS Protocols|TLSv1|SSLv|Supported Server Cipher|SSL Certificate/i.test(out);
+  const noTlsServiceDetected =
+    /connection refused|failed to connect|handshake failed|no route to host|connection reset/i.test(out);
 
   for (const line of lines) {
     const low = line.toLowerCase();
@@ -373,9 +375,18 @@ export function parseSsl(rawOutput = "", target = "") {
 
   const allIssues = [...new Set([...critical, ...issues, ...certificateIssues])];
 
+  if (noTlsServiceDetected) {
+    allIssues.push(
+      "HTTPS/TLS service is not reachable on the expected TLS endpoint; traffic may be exposed over plain HTTP."
+    );
+    critical.push(
+      "No reachable TLS endpoint detected. Enforce HTTPS and expose a valid TLS listener (typically port 443)."
+    );
+  }
+
   // success = scan ran and produced output (true even when vulnerabilities found)
   // hasVulnerabilities = actual security problems found
-  const success = looksLikeSslscan || lines.length > 5;
+  const success = looksLikeSslscan || noTlsServiceDetected || lines.length > 5;
   const hasVulnerabilities = allIssues.length > 0;
 
   return {

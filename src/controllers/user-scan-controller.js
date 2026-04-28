@@ -1,6 +1,8 @@
 import axios from "axios";
 import https from "https";
 import { randomUUID } from "crypto";
+import { exec } from "child_process";
+import util from "util";
 import { Scan } from "../models/scans-mongoose.js";
 import { User } from "../models/users-mongoose.js";
 import {
@@ -11,6 +13,8 @@ import {
 import { refundFailedScanQuota } from "../services/scan-quota.js";
 import { validateHostname } from "../utils/validations/hostname-validation.js";
 import { urlValidation } from "../utils/validations/url-validation.js";
+
+const execPromise = util.promisify(exec);
 
 const ALLOWED_SCANS = ["nmap", "nikto", "ssl", "sqlmap"];
 const DAILY_PER_TOOL_LIMIT = 10;
@@ -40,6 +44,20 @@ export async function pingTarget(req, res) {
       targetPort = parts[1] || '80';
     }
 
+    // Attempt ICMP Ping first
+    try {
+      await execPromise(`ping -c 1 -W 2 ${targetHost}`);
+      return res.json({ 
+        success: true, 
+        message: "Target is reachable and alive.", 
+        host: targetHost,
+        method: "icmp",
+        url: validation.url,
+      });
+    } catch (icmpError) {
+      console.log(`[pingTarget] ICMP ping failed for ${targetHost}, falling back to HTTP probes...`);
+    }
+
     const httpsAgent = new https.Agent({ rejectUnauthorized: false });
     const probeConfig = {
       timeout: 8000,
@@ -60,6 +78,26 @@ export async function pingTarget(req, res) {
       alternate.protocol = parsedUrl.protocol === "https:" ? "http:" : "https:";
       if (!probeUrls.includes(alternate.href)) {
         probeUrls.push(alternate.href);
+      }
+
+      // If backend runs in Docker, localhost may point to the container itself.
+      // Probe common host bridge aliases as fallback so local DVWA can still be detected.
+      const isLoopback = ["localhost", "127.0.0.1", "::1"].includes(parsedUrl.hostname);
+      if (isLoopback) {
+        const bridgeHosts = ["host.docker.internal", "172.17.0.1"];
+        for (const bridgeHost of bridgeHosts) {
+          const bridgePrimary = new URL(parsedUrl.href);
+          bridgePrimary.hostname = bridgeHost;
+          if (!probeUrls.includes(bridgePrimary.href)) {
+            probeUrls.push(bridgePrimary.href);
+          }
+
+          const bridgeAlternate = new URL(bridgePrimary.href);
+          bridgeAlternate.protocol = bridgePrimary.protocol === "https:" ? "http:" : "https:";
+          if (!probeUrls.includes(bridgeAlternate.href)) {
+            probeUrls.push(bridgeAlternate.href);
+          }
+        }
       }
     } catch {
       probeUrls.push(validation.url);
@@ -110,7 +148,7 @@ export async function pingTarget(req, res) {
       console.error(`[pingTarget] Host ${targetHost} failed HTTP reachability probes.`);
       return res.status(503).json({ 
         success: false, 
-        error: `Target Unreachable: ${targetHost} did not respond to HTTP reachability probes on port ${targetPort}.` 
+        error: `Target Unreachable: ${targetHost} did not respond to ICMP or HTTP reachability probes on port ${targetPort}.` 
       });
     }
   } catch (error) {
@@ -287,15 +325,37 @@ function isRunningAsRoot() {
   return false;
 }
 
-async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quick") {
+async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quick", sqlmapUrl = "") {
   const hostname = resolveHostname(finalUrl);
 
   if (scanType === "nmap") {
     let args = [];
     if (scanMode === "full") {
-      args = ["-p-", "-sV", "-sC", "-v", "--max-retries", "1", "--host-timeout", "600s", hostname];
+      args = [
+        "-p-",
+        "-sV",
+        "-sC",
+        "--script",
+        "vuln",
+        "-v",
+        "--max-retries",
+        "1",
+        "--host-timeout",
+        "600s",
+        hostname,
+      ];
     } else {
-      args = ["-F", "-sV", "-v", "--max-retries", "1", "--host-timeout", "240s", hostname];
+      args = [
+        "-p",
+        "80,443,8080",
+        "-sV",
+        "-v",
+        "--max-retries",
+        "1",
+        "--host-timeout",
+        "240s",
+        hostname,
+      ];
     }
 
     if (shouldEnableNmapOsDetection()) {
@@ -313,7 +373,7 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
   if (scanType === "nikto") {
     let args = ["-h", finalUrl, "-maxtime", scanMode === "full" ? "300s" : "120s", "-nointeractive"];
     if (scanMode === "quick") {
-      args.push("-Tuning", "x"); 
+      args.push("-Tuning", "b");
     }
     return {
       executable: "nikto",
@@ -323,19 +383,26 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
   }
 
   if (scanType === "ssl") {
+    const sslArgs =
+      scanMode === "full"
+        ? ["--no-colour", "--show-certificate", "--heartbleed", resolveSslTarget(finalUrl)]
+        : ["--no-colour", resolveSslTarget(finalUrl)];
+
     return {
       executable: "sslscan",
-      args: ["--no-colour", "--show-certificate", resolveSslTarget(finalUrl)],
+      args: sslArgs,
       opts: { timeoutMs: 120000, maxRaw: 200000 },
     };
   }
 
   if (scanType === "sqlmap") {
-    let sqlmapTarget = buildSqlmapTarget(finalUrl);
+    // Use provided sqlmapUrl if available, otherwise fall back to auto-construction
+    let sqlmapTarget = sqlmapUrl || buildSqlmapTarget(finalUrl);
     let sqlmapCookies = cookies || "";
 
     // Local DVWA convenience: auto-login and use SQLi endpoint if user passed only base URL.
-    if (!sqlmapCookies && !finalUrl.includes("?")) {
+    // Only do this if we're using auto-constructed target (not provided by user)
+    if (!sqlmapUrl && !sqlmapCookies && !finalUrl.includes("?")) {
       try {
         const dvwa = await prepareDvwaSqlmapContext(finalUrl);
         if (dvwa?.sqlmapTarget) {
@@ -387,7 +454,7 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
   throw new Error("Unsupported scan type");
 }
 
-function launchScanInBackground(scanId, finalUrl, scanType, cookies = "", scanMode = "quick") {
+function launchScanInBackground(scanId, finalUrl, scanType, cookies = "", scanMode = "quick", sqlmapUrl = "") {
   return new Promise(async (resolve) => {
     try {
       if (hasProcess(scanId)) {
@@ -396,7 +463,7 @@ function launchScanInBackground(scanId, finalUrl, scanType, cookies = "", scanMo
 
       console.log(`[SCAN_SERVICE] Starting ${scanType} scan (Mode: ${scanMode}) for: ${finalUrl} (ID: ${scanId})`);
 
-      const command = await getScanCommand(scanType, finalUrl, cookies, scanMode);
+      const command = await getScanCommand(scanType, finalUrl, cookies, scanMode, sqlmapUrl);
       
       command.opts.onComplete = (id, status, parsed) => {
         resolve({ success: status === "completed", status, parsed });
@@ -576,7 +643,7 @@ export async function startScan(req, res) {
       return res.status(401).json({ success: false, error: "Unauthorized" });
     }
 
-    const { targetUrl, scanType, cookies, scanMode = "quick" } = req.body || {};
+    const { targetUrl, scanType, cookies, scanMode = "quick", sqlmapUrl } = req.body || {};
     if (!targetUrl || !scanType) {
       return res.status(400).json({ success: false, error: "targetUrl and scanType are required" });
     }
@@ -590,6 +657,16 @@ export async function startScan(req, res) {
       return res.status(400).json({ success: false, error: validation.error });
     }
     const finalUrl = validation.url;
+
+    // Validate sqlmapUrl if provided
+    let finalSqlmapUrl = sqlmapUrl;
+    if (sqlmapUrl) {
+      const sqlmapValidation = urlValidation(sqlmapUrl);
+      if (!sqlmapValidation.valid) {
+        return res.status(400).json({ success: false, error: "Invalid SQLMap URL: " + sqlmapValidation.error });
+      }
+      finalSqlmapUrl = sqlmapValidation.url;
+    }
 
     // Domain Blacklist Check - Protect major public infrastructure
     const hostname = new URL(finalUrl).hostname.toLowerCase();
@@ -667,7 +744,8 @@ export async function startScan(req, res) {
           for (const scan of createdScans) {
             await Scan.findByIdAndUpdate(scan._id, { status: "running", startedAt: new Date() });
             // Sequential execution ensures we don't saturate the server resources
-            await launchScanInBackground(String(scan._id), finalUrl, scan.scanType, cookies, scanMode);
+            const toolSpecificSqlmapUrl = scan.scanType === "sqlmap" ? finalSqlmapUrl : "";
+            await launchScanInBackground(String(scan._id), finalUrl, scan.scanType, cookies, scanMode, toolSpecificSqlmapUrl);
           }
         } catch (bgError) {
           console.error("[SCAN_ORCHESTRATOR] Critical failure in background loop:", bgError);
@@ -713,7 +791,7 @@ export async function startScan(req, res) {
       quota: quota.quota,
     });
 
-    launchScanInBackground(String(scanDoc._id), finalUrl, scanType, cookies, scanMode);
+    launchScanInBackground(String(scanDoc._id), finalUrl, scanType, cookies, scanMode, finalSqlmapUrl);
   } catch (error) {
     console.error("[startScan] Error:", error);
     return res.status(500).json({ success: false, error: "Failed to start scan" });
