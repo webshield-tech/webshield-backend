@@ -36,25 +36,16 @@ const allowedOrigins = [
 
 const webshieldDomainPattern = /^https:\/\/([a-z0-9-]+\.)?webshield\.tech$/i;
 const corsOptions = {
-  origin(origin, callback) {
-    // Allow non-browser calls (curl, health checks)
-    if (!origin) return callback(null, true);
-
-    if (allowAllCors) {
-      return callback(null, true);
+  origin: function (origin, callback) {
+    if (!origin || origin.includes('webshield.tech') || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
     }
-
-    const isWebshieldOrigin = origin.includes('webshield.tech');
-    
-    if (allowedOrigins.includes(origin) || isWebshieldOrigin) {
-      return callback(null, true);
-    }
-
-    return callback(new Error(`CORS blocked for origin: ${origin}`), false);
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "Cookie"],
+  allowedHeaders: ["Content-Type", "Authorization", "Cookie", "X-Requested-With"],
 };
 
 app.use(cors(corsOptions));
