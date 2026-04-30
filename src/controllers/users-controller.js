@@ -209,15 +209,20 @@ export async function checkUser(user) {
       $or: [{ email: identifier }, { username: identifier }],
     });
 
+    console.log(`[AUTH] Checking user: ${identifier}`);
+
     if (!userExists) {
-      console.log(`[AUTH] User not found: "${identifier}"`);
+      console.log(`[AUTH] User NOT FOUND in database: "${identifier}"`);
       return {
         success: false,
         error: "User does not exist",
       };
     }
 
+    console.log(`[AUTH] User found: ${userExists.email}. Verifying password...`);
+    
     if (userExists.isBlocked) {
+      console.log(`[AUTH] Account is blocked: ${identifier}`);
       return {
         success: false,
         error: "ACCOUNT_SUSPENDED: Your access to Vuln Spectra has been revoked due to ethical violations.",
@@ -225,6 +230,7 @@ export async function checkUser(user) {
     }
 
     if (!userExists.isVerified && !userExists.firebaseUid) {
+      console.log(`[AUTH] Email not verified: ${identifier}`);
       return {
         success: false,
         error: "EMAIL_NOT_VERIFIED: Please verify your email address to continue.",
@@ -235,13 +241,14 @@ export async function checkUser(user) {
     const isPasswordValid = await bcrypt.compare(password, userExists.password);
 
     if (!isPasswordValid) {
-      console.log(`[AUTH] Password mismatch for: ${identifier}`);
+      console.log(`[AUTH] PASSWORD MISMATCH for: ${identifier}`);
       return {
         success: false,
         error: "Your password is incorrect",
       };
     }
 
+    console.log(`[AUTH] Login successful for: ${identifier}`);
     const token = jwt.sign(
       {
         username: userExists.username,
@@ -281,9 +288,13 @@ export async function checkUser(user) {
 export async function loginUser(req, res) {
   try {
     const { email, password, emailOrUsername } = req.body;
+    const origin = req.headers.origin || "Unknown";
+    const host = req.headers.host || "Unknown";
 
     console.log("=== LOGIN REQUEST ===");
     console.log("Email/Username:", email || emailOrUsername);
+    console.log("Request origin:", origin);
+    console.log("Request host:", host);
 
     const result = await checkUser({
       email: email || emailOrUsername,
