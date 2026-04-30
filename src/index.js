@@ -44,9 +44,9 @@ const corsOptions = {
       return callback(null, true);
     }
 
-    const isWebshieldSubdomain = origin.endsWith('.webshield.tech') || origin === 'https://webshield.tech' || origin === 'http://webshield.tech';
+    const isWebshieldOrigin = origin.includes('webshield.tech');
     
-    if (allowedOrigins.includes(origin) || isWebshieldSubdomain || webshieldDomainPattern.test(origin)) {
+    if (allowedOrigins.includes(origin) || isWebshieldOrigin) {
       return callback(null, true);
     }
 
