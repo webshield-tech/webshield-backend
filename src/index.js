@@ -34,12 +34,13 @@ const allowedOrigins = [
   ...envAllowedOrigins,
 ].filter(Boolean);
 
-const webshieldDomainPattern = /^https:\/\/([a-z0-9-]+\.)?webshield\.tech$/i;
 const corsOptions = {
   origin: function (origin, callback) {
-    if (!origin || origin.includes('webshield.tech') || allowedOrigins.includes(origin)) {
+    console.log(`[CORS Check] Origin: ${origin}`);
+    if (!origin || origin.includes('webshield.tech') || allowAllCors) {
       callback(null, true);
     } else {
+      console.warn(`[CORS Blocked] Origin not allowed: ${origin}`);
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -48,11 +49,16 @@ const corsOptions = {
   allowedHeaders: ["Content-Type", "Authorization", "Cookie", "X-Requested-With"],
 };
 
+// 1. CORS FIRST
 app.use(cors(corsOptions));
-app.options(/.*/, cors(corsOptions));
+app.options("*", cors(corsOptions));
 
+// 2. PARSERS
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 app.use(cookieParser());
 
+// 3. RATE LIMITING
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 300, // Limit each IP to 300 requests per 15 mins
@@ -60,16 +66,14 @@ const globalLimiter = rateLimit({
   legacyHeaders: false,
   message: { success: false, error: "Too many requests from this IP. Please try again after 15 minutes." },
 });
-
 app.use(globalLimiter);
 
-app.use(express.json({ limit: "1mb" }));
-app.use(express.urlencoded({ extended: true, limit: "1mb" }));
-
+// 4. DATABASE
 connectDB().then(() => {
   seedAdmin();
 });
 
+// 5. ROUTES
 app.use("/user", userRouter);
 app.use("/scan", scanRouter);
 app.use("/auth", authRouter);
@@ -80,6 +84,7 @@ app.get("/", (req, res) => {
   res.json({ message: "Vuln Spectra Backend server is running" });
 });
 
+// 6. GLOBAL ERROR HANDLER
 app.use((err, req, res, next) => {
   console.error("Global error:", err);
   res.status(500).json({
@@ -92,21 +97,13 @@ const server = app.listen(port, () => {
   console.log(`Server running on port ${port}`);
   console.log(`Allowed Frontend: ${process.env.FRONTEND_URL || "Not configured"}`);
   console.log(`CORS allow all: ${allowAllCors ? "enabled" : "disabled"}`);
-  console.log(
-    `Database:  ${process.env.DB_URL ? "Configured" : "Not configured"}`
-  );
 });
 
-// Graceful shutdown for PM2 / AWS
-const shutdown = async (signal) => {
-  console.log(`\n[${signal}] Shutting down gracefully...`);
-  const killedCount = await killAllProcesses();
-  console.log(`Terminated ${killedCount} active scan processes.`);
+process.on("SIGTERM", async () => {
+  console.log("SIGTERM signal received: closing HTTP server");
+  await killAllProcesses();
   server.close(() => {
-    console.log("Server closed. Exiting process.");
+    console.log("HTTP server closed");
     process.exit(0);
   });
-};
-
-process.on("SIGTERM", () => shutdown("SIGTERM"));
-process.on("SIGINT", () => shutdown("SIGINT"));
+});
