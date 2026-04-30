@@ -39,7 +39,7 @@ export async function firebaseLogin(req, res) {
         role: "user",
         scanLimit: 15,
         usedScan: 0,
-        agreedToTerms: true, // Social login users usually bypass initial disclaimer if they come from trusted provider
+        agreedToTerms: false, // Force social login users to see the disclaimer once
         lastIp: req.headers["x-forwarded-for"] || req.socket.remoteAddress,
         firebaseUid: uid,
         avatar: picture
