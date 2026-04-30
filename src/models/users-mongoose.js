@@ -37,7 +37,11 @@ const userSchema = new mongoose.Schema(
     agreedToTerms: { type: Boolean, default: false },
     termsAcceptedAt: { type: Date },
     termsAcceptedIP: { type: String },
+    lastIp: { type: String },
     isBlocked: { type: Boolean, default: false },
+    isVerified: { type: Boolean, default: false },
+    verificationCode: { type: String },
+    verificationCodeExpires: { type: Date },
   },
   {
     timestamps: true,

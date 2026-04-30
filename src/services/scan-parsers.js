@@ -449,6 +449,13 @@ export function parseByTool(executable, rawOutput, target) {
   if (bin.includes("sqlmap")) return parseSqlmap(rawOutput, target);
   if (bin.includes("ssl") || bin.includes("sslscan"))
     return parseSsl(rawOutput, target);
+  if (bin.includes("gobuster")) return parseGobuster(rawOutput, target);
+  if (bin.includes("ratelimit")) return parseRateLimit(rawOutput, target);
+  if (bin.includes("ffuf")) return parseFfuf(rawOutput, target);
+  if (bin.includes("wapiti")) return parseWapiti(rawOutput, target);
+  if (bin.includes("nuclei")) return parseNuclei(rawOutput, target);
+  if (bin.includes("dns")) return parseDns(rawOutput, target);
+  if (bin.includes("whois")) return parseWhois(rawOutput, target);
 
   // Default: return raw output only
   return {
@@ -458,3 +465,104 @@ export function parseByTool(executable, rawOutput, target) {
     target,
   };
 }
+export function parseGobuster(rawOutput = "", target = "") {
+  const out = rawOutput || "";
+  const lines = out.split("\n").map(l => l.trim()).filter(Boolean);
+  const found = [];
+  
+  for (const line of lines) {
+    if (line.includes("(Status: 200)") || line.includes("(Status: 301)") || line.includes("(Status: 302)")) {
+      found.push(line);
+    }
+  }
+
+  return {
+    tool: "gobuster",
+    success: found.length > 0,
+    directories: found,
+    count: found.length,
+    rawOutput: out,
+    target
+  };
+}
+
+export function parseRateLimit(rawOutput = "", target = "") {
+  const out = rawOutput || "";
+  const isVulnerable = out.includes("RATE_LIMIT_DETECTED") || out.includes("429 Too Many Requests");
+  
+  return {
+    tool: "ratelimit",
+    success: true,
+    vulnerable: isVulnerable,
+    findings: isVulnerable ? ["The website does not seem to have strong rate limiting or returned 429 after multiple requests."] : ["Rate limiting seems to be active or no 429 errors were detected during the burst test."],
+    rawOutput: out,
+    target
+  };
+}
+
+export function parseFfuf(rawOutput = "", target = "") {
+  const lines = rawOutput.split("\n");
+  const findings = lines.filter(l => l.includes("[Status: 200") || l.includes("[Status: 301"));
+  return {
+    tool: "ffuf",
+    success: findings.length > 0,
+    findings,
+    count: findings.length,
+    rawOutput,
+    target
+  };
+}
+
+export function parseWapiti(rawOutput = "", target = "") {
+  return {
+    tool: "wapiti",
+    success: rawOutput.includes("Vulnerabilities found"),
+    summary: rawOutput.includes("Vulnerabilities found") ? "Web vulnerabilities detected by Wapiti" : "No obvious web vulnerabilities found",
+    rawOutput,
+    target
+  };
+}
+
+export function parseNuclei(rawOutput = "", target = "") {
+  const lines = rawOutput.split("\n").filter(l => l.trim().startsWith("["));
+  return {
+    tool: "nuclei",
+    success: lines.length > 0,
+    findings: lines,
+    count: lines.length,
+    rawOutput,
+    target
+  };
+}
+
+export function parseDns(rawOutput = "", target = "") {
+  try {
+    const data = JSON.parse(rawOutput);
+    return {
+      tool: "dns",
+      success: true,
+      records: data,
+      rawOutput,
+      target
+    };
+  } catch (e) {
+    return {
+      tool: "dns",
+      success: false,
+      error: "Failed to parse DNS data",
+      rawOutput,
+      target
+    };
+  }
+}
+
+export function parseWhois(rawOutput = "", target = "") {
+  return {
+    tool: "whois",
+    success: rawOutput.length > 0,
+    data: rawOutput,
+    rawOutput,
+    target
+  };
+}
+

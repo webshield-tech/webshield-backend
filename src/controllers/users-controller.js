@@ -3,30 +3,117 @@ import { User } from "../models/users-mongoose.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { verifyEmailExistence } from "../utils/email-verifier.js";
+import admin from "../config/firebase-admin.js";
+import { sendVerificationEmail } from "../utils/email-service.js";
+import crypto from "crypto";
+
+export async function firebaseLogin(req, res) {
+  try {
+    const { token } = req.body;
+    if (!token) {
+      return res.status(400).json({ success: false, error: "Firebase token is required" });
+    }
+
+    // Verify token with Firebase Admin
+    let decodedToken;
+    try {
+      decodedToken = await admin.auth().verifyIdToken(token);
+    } catch (err) {
+      console.error("Firebase token verification failed:", err.message);
+      return res.status(401).json({ success: false, error: "Invalid social login token" });
+    }
+
+    const { email, name, picture, uid } = decodedToken;
+
+    // Find or create user
+    let user = await User.findOne({ email });
+
+    if (!user) {
+      // Create new user for social login
+      const username = name ? name.replace(/\s+/g, "").toLowerCase() + Math.floor(Math.random() * 1000) : email.split("@")[0] + Math.floor(Math.random() * 1000);
+      
+      user = new User({
+        username,
+        email,
+        password: bcrypt.hashSync(Math.random().toString(36), 10), // Random password
+        role: "user",
+        scanLimit: 15,
+        usedScan: 0,
+        agreedToTerms: true, // Social login users usually bypass initial disclaimer if they come from trusted provider
+        lastIp: req.headers["x-forwarded-for"] || req.socket.remoteAddress,
+        firebaseUid: uid,
+        avatar: picture
+      });
+      await user.save();
+      console.log(`[SocialAuth] Created new user: ${email}`);
+    } else {
+      // Update existing user IP
+      user.lastIp = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+      if (!user.firebaseUid) user.firebaseUid = uid;
+      await user.save();
+      console.log(`[SocialAuth] Logged in existing user: ${email}`);
+    }
+
+    // Generate our platform JWT
+    const platformToken = jwt.sign(
+      { userId: user._id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    const isProduction = process.env.NODE_ENV === "production";
+    const domain = process.env.COOKIE_DOMAIN || (isProduction ? ".webshield.tech" : "localhost");
+    
+    res.cookie("token", platformToken, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? "none" : "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: "/",
+      domain: isProduction ? domain : undefined
+    });
+
+    return res.json({
+      success: true,
+      token: platformToken,
+      user: {
+        _id: user._id,
+        userId: user._id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        scanLimit: user.scanLimit,
+        usedScan: user.usedScan,
+        agreedToTerms: user.agreedToTerms,
+      }
+    });
+
+  } catch (error) {
+    console.error("Firebase Login Controller Error:", error);
+    return res.status(500).json({ success: false, error: "Internal server error during social login" });
+  }
+}
+
 
 function getCookieOptions() {
   const isProduction = process.env.NODE_ENV === "production";
-  const domain = process.env.COOKIE_DOMAIN || (isProduction ? ".webshield.tech" : "localhost");
   
   return {
     httpOnly: true,
-    secure: isProduction,
-    sameSite: isProduction ? "none" : "lax",
+    secure: true, 
+    sameSite: "none",
     maxAge: 7 * 24 * 60 * 60 * 1000,
     path: "/",
-    domain: isProduction ? domain : undefined
   };
 }
 
 export async function addUser(user) {
-  const { username, email, password } = user || {};
+  const { username, email, password, lastIp } = user || {};
 
   if (!username || !email || !password) {
     return { error: "All fields are required" };
   }
 
-  // Bypassed for development/competition demo to allow `.io` and fake emails
-  /*
   const isEmailValid = await verifyEmailExistence(email);
   if (!isEmailValid) {
     return {
@@ -34,7 +121,6 @@ export async function addUser(user) {
         "Please provide a valid, deliverable email address. Temporary/disposable emails are not allowed.",
     };
   }
-  */
 
   const existingUser = await User.findOne({
     $or: [{ email }, { username }],
@@ -49,6 +135,9 @@ export async function addUser(user) {
     };
   }
 
+  const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+  const verificationCodeExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
+
   const newUser = await createUser({
     username,
     email,
@@ -56,14 +145,23 @@ export async function addUser(user) {
     role: "user",
     scanLimit: 10,
     usedScan: 0,
+    lastIp,
+    isVerified: false,
+    verificationCode,
+    verificationCodeExpires,
   });
+
+  if (newUser && !newUser.error) {
+    await sendVerificationEmail(email, verificationCode);
+  }
 
   return newUser;
 }
 
 export async function signupUser(req, res) {
   try {
-    const created = await addUser(req.body);
+    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    const created = await addUser({ ...req.body, lastIp: clientIp });
 
     if (created.error) {
       return res.status(400).json({
@@ -72,34 +170,11 @@ export async function signupUser(req, res) {
       });
     }
 
-    // Generate token
-    const token = jwt.sign(
-      {
-        username: created.username,
-        email: created.email,
-        role: created.role,
-        userId: created._id,
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
-
-    res.cookie("token", token, getCookieOptions());
-
     res.status(201).json({
       success: true,
-      message: "User created successfully",
-      user: {
-        _id: created._id,
-        userId: created._id,
-        username: created.username,
-        email: created.email,
-        role: created.role,
-        scanLimit: created.scanLimit,
-        usedScan: 0,
-        agreedToTerms: created.agreedToTerms || false,
-      },
-      token: token,
+      message: "Registration successful. Please check your email for the verification code.",
+      email: created.email,
+      userId: created._id
     });
   } catch (error) {
     console.error(" Signup error:", error);
@@ -146,6 +221,14 @@ export async function checkUser(user) {
       return {
         success: false,
         error: "ACCOUNT_SUSPENDED: Your access to Vuln Spectra has been revoked due to ethical violations.",
+      };
+    }
+
+    if (!userExists.isVerified && !userExists.firebaseUid) {
+      return {
+        success: false,
+        error: "EMAIL_NOT_VERIFIED: Please verify your email address to continue.",
+        email: userExists.email
       };
     }
 
@@ -215,6 +298,9 @@ export async function loginUser(req, res) {
         error: result.error,
       });
     }
+
+    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    await User.findByIdAndUpdate(result.user._id, { lastIp: clientIp });
 
     res.cookie("token", result.token, getCookieOptions());
 
@@ -288,5 +374,86 @@ export async function getUserProfile(req, res) {
       success: false,
       error: "Failed to fetch profile",
     });
+  }
+}
+export async function verifyEmail(req, res) {
+  try {
+    const { email, code } = req.body;
+    if (!email || !code) {
+      return res.status(400).json({ success: false, error: "Email and code are required" });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ success: false, error: "User not found" });
+    }
+
+    if (user.isVerified) {
+      return res.status(400).json({ success: false, error: "Account is already verified" });
+    }
+
+    if (user.verificationCode !== code || user.verificationCodeExpires < Date.now()) {
+      return res.status(400).json({ success: false, error: "Invalid or expired verification code" });
+    }
+
+    user.isVerified = true;
+    user.verificationCode = undefined;
+    user.verificationCodeExpires = undefined;
+    await user.save();
+
+    // Generate token since they are now verified
+    const token = jwt.sign(
+      { userId: user._id, role: user.role, username: user.username, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    res.cookie("token", token, getCookieOptions());
+
+    return res.json({
+      success: true,
+      message: "Email verified successfully!",
+      token,
+      user: {
+        _id: user._id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        agreedToTerms: user.agreedToTerms
+      }
+    });
+  } catch (error) {
+    console.error("[VerifyEmail Error]:", error);
+    return res.status(500).json({ success: false, error: "Internal server error" });
+  }
+}
+
+export async function resendVerificationCode(req, res) {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, error: "Email is required" });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ success: false, error: "User not found" });
+    }
+
+    if (user.isVerified) {
+      return res.status(400).json({ success: false, error: "Account already verified" });
+    }
+
+    const newCode = Math.floor(100000 + Math.random() * 900000).toString();
+    user.verificationCode = newCode;
+    user.verificationCodeExpires = new Date(Date.now() + 10 * 60 * 1000);
+    await user.save();
+
+    await sendVerificationEmail(email, newCode);
+
+    return res.json({ success: true, message: "New verification code sent!" });
+  } catch (error) {
+    console.error("[ResendCode Error]:", error);
+    return res.status(500).json({ success: false, error: "Internal server error" });
   }
 }

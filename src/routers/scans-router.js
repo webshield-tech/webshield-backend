@@ -9,6 +9,7 @@ import {
   getBatchResults,
   startImpactDemo,
   getImpactDemo,
+  getTodayStats,
 } from '../controllers/user-scan-controller.js';
 import {
   generateAIReportForScan,
@@ -33,6 +34,7 @@ scanRouter.use(checkAuth);
 scanRouter.post('/ping', pingTarget);
 scanRouter.post('/start', scanLimiter, startScan);
 scanRouter.get('/history', getScanHistory);
+scanRouter.get('/stats/today', getTodayStats);
 scanRouter.get('/batch/:batchId', getBatchResults);
 scanRouter.get('/:id', getScanResultsById);
 scanRouter.post('/:id/cancel', cancelScan);

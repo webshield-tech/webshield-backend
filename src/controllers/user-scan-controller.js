@@ -3,6 +3,7 @@ import https from "https";
 import { randomUUID } from "crypto";
 import { exec } from "child_process";
 import util from "util";
+import dns from "dns/promises";
 import { Scan } from "../models/scans-mongoose.js";
 import { User } from "../models/users-mongoose.js";
 import {
@@ -16,7 +17,7 @@ import { urlValidation } from "../utils/validations/url-validation.js";
 
 const execPromise = util.promisify(exec);
 
-const ALLOWED_SCANS = ["nmap", "nikto", "ssl", "sqlmap"];
+const ALLOWED_SCANS = ["nmap", "nikto", "ssl", "sqlmap", "gobuster", "ratelimit", "ffuf", "wapiti", "nuclei", "dns", "whois"];
 const DAILY_PER_TOOL_LIMIT = 10;
 const DAILY_AUTO_LIMIT = 5;
 
@@ -463,6 +464,86 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
     };
   }
 
+  if (scanType === "gobuster") {
+    const wordlistPath = path.join(process.cwd(), "wordlist.txt");
+    const args = ["dir", "-u", finalUrl, "-w", wordlistPath, "-t", "20", "-z", "--no-error"];
+    if (scanMode === "quick") args.push("--limit", "50");
+
+    return {
+      executable: "gobuster",
+      args,
+      opts: { timeoutMs: 300000 },
+    };
+  }
+
+  if (scanType === "ratelimit") {
+    const scriptPath = path.join(process.cwd(), "src", "utils", "ratelimit-test.js");
+    return {
+      executable: "node",
+      args: [scriptPath, finalUrl],
+      opts: { timeoutMs: 120000 },
+    };
+  }
+
+  if (scanType === "ffuf") {
+    const wordlistPath = path.join(process.cwd(), "wordlist.txt");
+    const args = ["-u", `${finalUrl}/FUZZ`, "-w", wordlistPath, "-t", "20", "-c"];
+    if (scanMode === "quick") args.push("-mc", "200,301");
+    
+    return {
+      executable: "ffuf",
+      args,
+      opts: { timeoutMs: 300000 },
+    };
+  }
+
+  if (scanType === "wapiti") {
+    const args = ["-u", finalUrl, "-m", "common", "-n", "10"];
+    if (scanMode === "full") args.push("--level", "1");
+    
+    return {
+      executable: "wapiti",
+      args,
+      opts: { timeoutMs: 600000 },
+    };
+  }
+
+  if (scanType === "nuclei") {
+    const args = ["-u", finalUrl, "-silent", "-no-color"];
+    if (scanMode === "quick") args.push("-tags", "cve,exposure");
+    
+    return {
+      executable: "nuclei",
+      args,
+      opts: { timeoutMs: 600000 },
+    };
+  }
+
+  if (scanType === "dns") {
+    const scriptPath = path.join(process.cwd(), "src", "utils", "dns-verify.js");
+    const hostname = new URL(finalUrl).hostname;
+    return {
+      executable: "node",
+      args: [scriptPath, hostname],
+      opts: { timeoutMs: 30000 },
+    };
+  }
+
+  if (scanType === "whois") {
+    const hostname = new URL(finalUrl).hostname;
+    // Get base domain (e.g., example.com from sub.example.com)
+    const domainParts = hostname.split(".");
+    const baseDomain = domainParts.slice(-2).join(".");
+    
+    return {
+      executable: "whois",
+      args: [baseDomain],
+      opts: { timeoutMs: 30000 },
+    };
+  }
+
+
+
   throw new Error("Unsupported scan type");
 }
 
@@ -474,6 +555,24 @@ function launchScanInBackground(scanId, finalUrl, scanType, cookies = "", scanMo
       }
 
       console.log(`[SCAN_SERVICE] Starting ${scanType} scan (Mode: ${scanMode}) for: ${finalUrl} (ID: ${scanId})`);
+
+      // PLATFORM DETECTION
+      let platform = "Unknown";
+      try {
+        const { stdout: headers } = await execPromise(`curl -I -s --max-time 5 ${finalUrl}`);
+        const h = headers.toLowerCase();
+        if (h.includes("ubuntu")) platform = "Ubuntu Linux";
+        else if (h.includes("debian")) platform = "Debian Linux";
+        else if (h.includes("centos") || h.includes("redhat")) platform = "RHEL/CentOS Linux";
+        else if (h.includes("win32") || h.includes("iis") || h.includes("microsoft")) platform = "Windows Server";
+        else if (h.includes("apache")) platform = "Apache Server (Linux)";
+        else if (h.includes("nginx")) platform = "Nginx Server (Linux)";
+        else if (h.includes("alpine")) platform = "Alpine Linux";
+        
+        await Scan.findByIdAndUpdate(scanId, { platform });
+      } catch (e) {
+        console.warn("[SCAN_SERVICE] Platform detection failed:", e.message);
+      }
 
       const command = await getScanCommand(scanType, finalUrl, cookies, scanMode, sqlmapUrl);
       
@@ -522,7 +621,7 @@ async function getTodayScanStats(userId) {
     .select("scanType results.batchId results.mode")
     .lean();
 
-  const byTool = { nmap: 0, nikto: 0, ssl: 0, sqlmap: 0 };
+  const byTool = { nmap: 0, nikto: 0, ssl: 0, sqlmap: 0, gobuster: 0, ratelimit: 0 };
   const autoBatchIds = new Set();
 
   for (const scan of scansToday) {
@@ -708,12 +807,41 @@ export async function startScan(req, res) {
 
     // Domain Blacklist Check - Protect major public infrastructure
     const hostname = new URL(finalUrl).hostname.toLowerCase();
-    const strictlyProhibited = ['netflix.com', 'amazon.com', 'apple.com', 'microsoft.com'];
-    if (strictlyProhibited.some(domain => hostname === domain || hostname.endsWith(`.${domain}`))) {
-      return res.status(403).json({ 
-        success: false, 
-        error: "Ethical boundaries: Scanning major public infrastructure is strictly prohibited." 
-      });
+    
+    // Explicitly allow localhost and local testing ips
+    const isLocal = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.') || hostname.startsWith('10.');
+
+    if (!isLocal) {
+      // Common, gov, social media, and major tech websites
+      const strictlyProhibited = [
+        'netflix.com', 'amazon.com', 'apple.com', 'microsoft.com', 'google.com', 'facebook.com', 
+        'instagram.com', 'twitter.com', 'x.com', 'linkedin.com', 'github.com', 'youtube.com',
+        'yahoo.com', 'bing.com', 'fbi.gov', 'gov', 'mil', 'edu'
+      ];
+      
+      const isProhibited = strictlyProhibited.some(domain => 
+        hostname === domain || hostname.endsWith(`.${domain}`)
+      );
+      
+      // Additional TLD check for gov/mil/edu
+      const isProhibitedTld = hostname.endsWith('.gov') || hostname.endsWith('.mil') || hostname.endsWith('.edu');
+
+      if (isProhibited || isProhibitedTld) {
+        return res.status(403).json({ 
+          success: false, 
+          error: "Ethical boundaries: Scanning major public infrastructure, government, or social media websites is strictly prohibited. If you want to test vulnerabilities, please use authorized testing websites like http://testphp.vulnweb.com/ or a local DVWA container." 
+        });
+      }
+
+      // DNS Verification System: ensure domain actually resolves
+      try {
+        await dns.lookup(hostname);
+      } catch (dnsError) {
+        return res.status(400).json({ 
+          success: false, 
+          error: `DNS Verification Failed: The domain '${hostname}' could not be resolved. Please enter a valid and active website.` 
+        });
+      }
     }
 
     const quota = await checkScanQuota(userId, scanType);
@@ -1015,5 +1143,19 @@ export async function getImpactDemo(req, res) {
   } catch (error) {
     console.error("[getImpactDemo] Error:", error);
     return res.status(500).json({ success: false, error: "Failed to fetch impact demonstration" });
+  }
+}
+
+export async function getTodayStats(req, res) {
+  try {
+    const userId = getUserIdFromRequest(req);
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "Unauthorized" });
+    }
+    const stats = await getTodayScanStats(userId);
+    return res.json({ success: true, stats });
+  } catch (error) {
+    console.error("[getTodayStats] Error:", error);
+    return res.status(500).json({ success: false, error: "Failed to fetch scan stats" });
   }
 }

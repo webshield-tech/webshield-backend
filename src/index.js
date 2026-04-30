@@ -6,8 +6,9 @@ import cookieParser from "cookie-parser";
 import scanRouter from "./routers/scans-router.js";
 import authRouter from "./routers/auth-router.js";
 import adminRouter from "./routers/admin-router.js";
-import exploitRouter from "./routers/exploit-router.js";
+import dataRouter from "./routers/data-router.js";
 import cors from "cors";
+import rateLimit from "express-rate-limit";
 
 import { seedAdmin } from "./utils/seed-admin.js";
 import { killAllProcesses } from "./services/scan-runner.js";
@@ -59,6 +60,16 @@ app.options(/.*/, cors(corsOptions));
 
 app.use(cookieParser());
 
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 300, // Limit each IP to 300 requests per 15 mins
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: "Too many requests from this IP. Please try again after 15 minutes." },
+});
+
+app.use(globalLimiter);
+
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 
@@ -70,7 +81,7 @@ app.use("/user", userRouter);
 app.use("/scan", scanRouter);
 app.use("/auth", authRouter);
 app.use("/admin", adminRouter);
-app.use("/api/exploit", exploitRouter);
+app.use("/api/exploit", dataRouter);
 
 app.get("/", (req, res) => {
   res.json({ message: "Vuln Spectra Backend server is running" });

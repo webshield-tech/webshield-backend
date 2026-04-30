@@ -3,7 +3,7 @@ import {
   loginValidation,
   signUpValidation,
 } from "../utils/validations/user-validation.js";
-import { checkUser, addUser } from "../controllers/users-controller.js";
+import { checkUser, addUser, firebaseLogin, verifyEmail, resendVerificationCode } from "../controllers/users-controller.js";
 import { checkAuth } from "../middlewares/user-auth.js";
 import { User } from "../models/users-mongoose.js";
 import dotenv from "dotenv";
@@ -16,16 +16,15 @@ const userRouter = express.Router();
 
 function getCookieOptions() {
   const isProduction = process.env.NODE_ENV === "production";
-  const domain = process.env.COOKIE_DOMAIN || (isProduction ? ".webshield.tech" : "localhost");
   
   return {
     httpOnly: true,
-    secure: isProduction,
-    // Cross-site frontend/backend deployments need SameSite=None in production.
-    sameSite: isProduction ? "none" : "lax",
+    secure: true, // Always true for cross-site cookies
+    sameSite: "none", // Must be "none" for cross-site
     maxAge: 7 * 24 * 60 * 60 * 1000,
     path: "/",
-    domain: isProduction ? domain : undefined
+    // If you have a custom domain, uncomment the next line
+    // domain: isProduction ? ".yourdomain.com" : undefined
   };
 }
 
@@ -117,6 +116,10 @@ userRouter.post("/login", loginValidation, loginLimiter, async (req, res) => {
     });
   }
 });
+
+userRouter.post("/firebase-login", firebaseLogin);
+userRouter.post("/verify-email", verifyEmail);
+userRouter.post("/resend-verification", resendVerificationCode);
 
 // GET USER PROFILE
 userRouter.get('/profile', checkAuth, async (req, res) => {

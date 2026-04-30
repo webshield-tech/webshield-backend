@@ -87,17 +87,21 @@ export async function startProcess(scanId, executable, args = [], opts = {}) {
       try {
         if (signal === "SIGTERM") {
           const mp = procEntry?.maxPartial || 50000;
+          const cancelledResult = {
+            cancelled: true,
+            error: "Process terminated (SIGTERM)",
+            rawOutput: out || err,
+            partialOutput: out ? out.slice(-mp) : err.slice(-mp),
+          };
           await Scan.findByIdAndUpdate(scanId, {
             status: "cancelled",
-            results: {
-              cancelled: true,
-              error: "Process terminated (SIGTERM)",
-              rawOutput: out || err,
-              partialOutput: out ? out.slice(-mp) : err.slice(-mp),
-            },
+            results: cancelledResult,
             updatedAt: new Date(),
             completedAt: new Date(),
           });
+          if (opts.onComplete) {
+            opts.onComplete(scanId, "cancelled", cancelledResult);
+          }
           return;
         }
 

@@ -78,25 +78,55 @@ function buildSummaryText(scan) {
   const toolResults = scan.results || {};
   let text = `ACTUAL SCAN DATA FOR ${String(scan.scanType).toUpperCase()}:\n`;
   text += `Target: ${scan.targetUrl}\n`;
+  if (scan.platform) text += `Platform Detected: ${scan.platform}\n`;
   
   if (scan.scanType === "nmap") {
-    text += `Open Ports: ${toolResults.openPorts?.join(", ") || "None detected"}\n`;
-    text += `Services: ${toolResults.serviceVersions?.join("; ") || "No version details"}\n`;
-    text += `CVEs: ${toolResults.cveList?.join(", ") || "None extracted"}\n`;
+    const res = toolResults.nmap || toolResults;
+    text += `Open Ports: ${res.openPorts?.join(", ") || "None detected"}\n`;
+    text += `Services: ${res.serviceVersions?.join("; ") || "No version details"}\n`;
+    text += `CVEs: ${res.cveList?.join(", ") || "None extracted"}\n`;
   } else if (scan.scanType === "nikto") {
-    text += `Findings: ${toolResults.findings?.slice(0, 10).join("\n") || "No major findings"}\n`;
+    const res = toolResults.nikto || toolResults;
+    text += `Findings: ${res.findings?.slice(0, 10).join("\n") || "No major findings"}\n`;
   } else if (scan.scanType === "sqlmap") {
-    text += `Vulnerable: ${toolResults.vulnerable ? "Yes" : "No"}\n`;
-    text += `Injection Types: ${toolResults.injectionTypes?.join(", ") || "N/A"}\n`;
-    text += `Vulnerability Evidence: ${toolResults.vulnerabilities?.slice(0, 10).join("\n") || "None"}\n`;
-    text += `DBMS: ${toolResults.details?.dbms || "Unknown"}\n`;
+    const res = toolResults.sqlmap || toolResults;
+    text += `Vulnerable: ${res.vulnerable ? "Yes" : "No"}\n`;
+    text += `Injection Types: ${res.injectionTypes?.join(", ") || "N/A"}\n`;
+    text += `Vulnerability Evidence: ${res.vulnerabilities?.slice(0, 10).join("\n") || "None"}\n`;
+    text += `DBMS: ${res.details?.dbms || "Unknown"}\n`;
   } else if (scan.scanType === "ssl") {
-    text += `Critical Issues: ${toolResults.criticalIssues?.slice(0, 10).join("\n") || "None"}\n`;
-    text += `Weak Ciphers: ${toolResults.weakCiphers?.slice(0, 10).join("\n") || "None"}\n`;
-    text += `Certificate Issues: ${toolResults.certificateIssues?.slice(0, 10).join("\n") || "None"}\n`;
-    text += `TLS 1.2 Supported: ${toolResults.supportsTLS12 ? "Yes" : "No"}\n`;
-    text += `TLS 1.3 Supported: ${toolResults.supportsTLS13 ? "Yes" : "No"}\n`;
+    const res = toolResults.ssl || toolResults;
+    text += `Critical Issues: ${res.criticalIssues?.slice(0, 10).join("\n") || "None"}\n`;
+    text += `Weak Ciphers: ${res.weakCiphers?.slice(0, 10).join("\n") || "None"}\n`;
+    text += `Certificate Issues: ${res.certificateIssues?.slice(0, 10).join("\n") || "None"}\n`;
+    text += `TLS 1.2 Supported: ${res.supportsTLS12 ? "Yes" : "No"}\n`;
+    text += `TLS 1.3 Supported: ${res.supportsTLS13 ? "Yes" : "No"}\n`;
+  } else if (scan.scanType === "gobuster") {
+    const res = toolResults.gobuster || toolResults;
+    text += `Directories Found: ${res.directories?.slice(0, 15).join(", ") || "None"}\n`;
+  } else if (scan.scanType === "ratelimit") {
+    const res = toolResults.ratelimit || toolResults;
+    text += `Rate Limiting Detected: ${res.vulnerable ? "Yes" : "No"}\n`;
+    text += `Findings: ${res.findings?.join("\n") || "N/A"}\n`;
+  } else if (scan.scanType === "ffuf") {
+    const res = toolResults.ffuf || toolResults;
+    text += `Fuzzing Findings: ${res.findings?.slice(0, 15).join(", ") || "None"}\n`;
+  } else if (scan.scanType === "wapiti") {
+    const res = toolResults.wapiti || toolResults;
+    text += `Wapiti Summary: ${res.summary || "N/A"}\n`;
+  } else if (scan.scanType === "nuclei") {
+    const res = toolResults.nuclei || toolResults;
+    text += `Vulnerability Templates Matched: ${res.findings?.slice(0, 10).join("\n") || "None"}\n`;
+  } else if (scan.scanType === "dns") {
+    const res = toolResults.dns || toolResults;
+    text += `DNS Records Found: ${Object.keys(res.records || {}).join(", ") || "None"}\n`;
+    if (res.records?.A) text += `A Records: ${res.records.A.join(", ")}\n`;
+    if (res.records?.MX) text += `MX Records: ${res.records.MX.map(m => m.exchange).join(", ")}\n`;
+  } else if (scan.scanType === "whois") {
+    const res = toolResults.whois || toolResults;
+    text += `Whois Data: ${res.data?.slice(0, 500) || "N/A"}\n`;
   }
+
   
   return text;
 }

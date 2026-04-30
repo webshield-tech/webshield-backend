@@ -214,7 +214,7 @@ export async function getAdminStats(req, res) {
     const recentUsers = await User.find()
   .sort({ createdAt: -1 })
   .limit(20)
-  .select("username email role createdAt isBlocked")
+  .select("username email role createdAt isBlocked lastIp")
   .lean();
 
     const recentScans = await Scan.find()
