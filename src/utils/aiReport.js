@@ -3,8 +3,8 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API);
-// gemini-1.5-flash has a large context window, so we never have to worry about 413s, and is highly stable.
-const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+// Use gemini-flash-latest for maximum stability and quota compatibility with this key
+const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
 
 // ---------------------------------------------------------------------------
 // Helpers
