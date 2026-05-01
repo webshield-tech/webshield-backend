@@ -78,7 +78,9 @@ function buildSummaryText(scan) {
   const toolResults = scan.results || {};
   let text = `ACTUAL SCAN DATA FOR ${String(scan.scanType).toUpperCase()}:\n`;
   text += `Target: ${scan.targetUrl}\n`;
-  if (scan.platform) text += `Platform Detected: ${scan.platform}\n`;
+  if (scan.platform) text += `Platform/OS: ${scan.platform}\n`;
+  if (toolResults.serverInfo) text += `Server Info: ${toolResults.serverInfo}\n`;
+  if (toolResults.techStack) text += `Technology Stack: ${toolResults.techStack}\n`;
   
   if (scan.scanType === "nmap") {
     const res = toolResults.nmap || toolResults;
