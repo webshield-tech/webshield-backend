@@ -16,6 +16,7 @@ export async function seedAdmin() {
         password: hashedPassword,
         role: "admin",
         agreedToTerms: true,
+        isVerified: true,
         scanLimit: 9999,
         isBlocked: false
       });
@@ -24,6 +25,7 @@ export async function seedAdmin() {
       // Ensure it has admin role and agreed to terms
       existingAdmin.role = "admin";
       existingAdmin.agreedToTerms = true;
+      existingAdmin.isVerified = true;
       await existingAdmin.save();
       console.log("Admin account verified: " + adminEmail);
     }
