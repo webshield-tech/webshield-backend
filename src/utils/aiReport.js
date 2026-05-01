@@ -29,7 +29,7 @@ RULES:
 4. TARGET CONTEXT: Use detected Platform/OS/Server/Cloudflare info. Acknowledge that tools like Cloudflare increase security.
 5. RISK LEVEL: Clearly label each finding. If it's just an open standard port, use [SAFE / SECURE] or [LOW RISK / INFORMATIONAL].
 6. REMEDIATION: Provide clear steps. If it's safe, suggest continuing to keep software updated.
-7. PATCH GUIDANCE REFERENCE: At the very end of your report, you MUST include this exact sentence: "For step-by-step guidance on how to fix these vulnerabilities in easy wording, please check the Patch Guider on your vulnerability dashboard."
+7. PATCH GUIDANCE REFERENCE: ONLY if vulnerabilities or risks were found, you MUST include this exact sentence at the end: "For step-by-step guidance on how to fix these vulnerabilities in easy wording, please check the Patch Guider on your vulnerability dashboard." If the site is fully secure/nominal, do NOT include this sentence. Instead, congratulate the user and suggest regular monitoring.
 8. Write the full report in this language: ${normalizedLanguage}
 
 IMPORTANT: Do NOT exaggerate risks. If a website is secure (like TryHackMe or Cloudflare-protected sites), your report must reflect that it is well-defended. Base your analysis ONLY on the provided scan data.`,

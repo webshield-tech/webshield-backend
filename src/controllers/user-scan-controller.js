@@ -725,14 +725,18 @@ function inferImpact(scan) {
       score = 5;
       evidence.push("No open ports were detected.");
     } else if (onlyStandardPorts && cveCount === 0) {
-      // Only ports 80/443 open, no CVEs → safe, expected web server behaviour
-      score = 10;
-      
+      // Check if standard ports are leaking version info (e.g. Apache/2.4.7)
+      const hasVersions = portsArray.some(p => /\d+\.\d+/.test(p) && !p.toLowerCase().includes("cloudflare"));
       const hasCloudflare = portsArray.some(p => p.toLowerCase().includes("cloudflare") || p.toLowerCase().includes("proxy"));
-      if (hasCloudflare) {
+
+      if (hasVersions) {
+        score = 40; // Medium risk if version headers are exposed
+        evidence.push("Standard web ports are open but are exposing specific service version information, which is a security risk.");
+      } else if (hasCloudflare) {
         score = 5;
         evidence.push("Cloudflare/Proxy protection detected. Target is shielded by a security layer.");
       } else {
+        score = 10;
         evidence.push("Only standard web ports (80, 443) are open — expected behaviour for a web server.");
       }
     } else {
