@@ -15,6 +15,8 @@ import { refundFailedScanQuota } from "../services/scan-quota.js";
 import { validateHostname } from "../utils/validations/hostname-validation.js";
 import { urlValidation } from "../utils/validations/url-validation.js";
 import { detectPlatform } from "../utils/platform-detector.js";
+import { extractReconData } from "../utils/reconDataExtractor.js";
+import { decideScanPlan } from "../utils/scanDecisionEngine.js";
 
 const execPromise = util.promisify(exec);
 
@@ -880,11 +882,24 @@ export async function startScan(req, res) {
 
     if (scanType === "all") {
       const batchId = randomUUID();
-      const scanDocs = ALLOWED_SCANS.map((tool) => ({
+      
+      // 1. SMART SCAN INTELLIGENCE LAYER: Run lightweight recon
+      const reconData = await extractReconData(finalUrl);
+      
+      // 2. Generate Scan Plan based on recon
+      const scanPlan = decideScanPlan(reconData, scanMode);
+      
+      // We only insert documents for the tools we decided to RUN
+      const scanDocs = scanPlan.run.map((tool) => ({
         userId,
         targetUrl: finalUrl,
         scanType: tool,
         status: "pending",
+        scanPlan: {
+          run: scanPlan.run,
+          skip: scanPlan.skip,
+          details: scanPlan.details
+        },
         results: {
           batchId,
           mode: "all-tools",
@@ -900,9 +915,10 @@ export async function startScan(req, res) {
 
       res.status(201).json({
         success: true,
-        message: "All tools scan started",
+        message: "Smart batch scan started",
         mode: "all-tools",
         batchId,
+        scanPlan, // Send transparency data to the frontend immediately
         scans: createdScans.map((s) => ({
           _id: s._id,
           scanType: s.scanType,

@@ -13,8 +13,24 @@ const scanSchema = new mongoose.Schema(
     },
     scanType: {
       type: String,
-      enum: ["nmap", "sqlmap", "ssl", "nikto"],
+      enum: [
+        "nmap",
+        "sqlmap",
+        "ssl",
+        "nikto",
+        "gobuster",
+        "ratelimit",
+        "ffuf",
+        "wapiti",
+        "nuclei",
+        "dns",
+        "whois",
+      ],
       default: "nikto",
+    },
+    platform: {
+      type: String,
+      default: null,
     },
     status: {
       type: String,
@@ -25,6 +41,7 @@ const scanSchema = new mongoose.Schema(
       type: Object,
       default: {},
     },
+    // Individual scan text report (single-tool)
     reportContent: {
       type: String,
       default: null,
@@ -37,9 +54,26 @@ const scanSchema = new mongoose.Schema(
       type: String,
       default: "english",
     },
+    // Batch / auto-scan: structured JSON from AI correlated analysis
+    batchAnalysisJson: {
+      type: Object,
+      default: null,
+    },
+    scanPlan: {
+      type: Object,
+      default: null,
+    },
     quotaRefunded: {
       type: Boolean,
       default: false,
+    },
+    startedAt: {
+      type: Date,
+      default: null,
+    },
+    completedAt: {
+      type: Date,
+      default: null,
     },
   },
   {
@@ -51,5 +85,6 @@ const scanSchema = new mongoose.Schema(
 scanSchema.index({ userId: 1, createdAt: -1 });
 scanSchema.index({ status: 1 });
 scanSchema.index({ userId: 1, status: 1 });
+scanSchema.index({ "results.batchId": 1 });
 
 export const Scan = mongoose.model("Scan", scanSchema);

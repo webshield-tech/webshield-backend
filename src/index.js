@@ -37,7 +37,7 @@ const allowedOrigins = [
 const corsOptions = {
   origin: function (origin, callback) {
     console.log(`[CORS Check] Origin: ${origin}`);
-    if (!origin || origin.includes('webshield.tech') || allowAllCors) {
+    if (!origin || allowedOrigins.includes(origin) || origin.includes('webshield.tech') || allowAllCors) {
       callback(null, true);
     } else {
       console.warn(`[CORS Blocked] Origin not allowed: ${origin}`);
