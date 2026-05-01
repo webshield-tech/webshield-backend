@@ -727,9 +727,14 @@ function inferImpact(scan) {
     } else if (onlyStandardPorts && cveCount === 0) {
       // Only ports 80/443 open, no CVEs → safe, expected web server behaviour
       score = 10;
-      evidence.push(
-        "Only standard web ports (80, 443) are open — expected behaviour for a web server."
-      );
+      
+      const hasCloudflare = portsArray.some(p => p.toLowerCase().includes("cloudflare") || p.toLowerCase().includes("proxy"));
+      if (hasCloudflare) {
+        score = 5;
+        evidence.push("Cloudflare/Proxy protection detected. Target is shielded by a security layer.");
+      } else {
+        evidence.push("Only standard web ports (80, 443) are open — expected behaviour for a web server.");
+      }
     } else {
       score = Math.min(nonStandardPorts.length * 10 + cveCount * 15, 85);
       if (nonStandardPorts.length > 0)
