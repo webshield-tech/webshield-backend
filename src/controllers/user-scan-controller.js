@@ -621,7 +621,10 @@ async function getTodayScanStats(userId) {
     .select("scanType results.batchId results.mode")
     .lean();
 
-  const byTool = { nmap: 0, nikto: 0, ssl: 0, sqlmap: 0, gobuster: 0, ratelimit: 0 };
+  const byTool = { 
+    nmap: 0, nikto: 0, ssl: 0, sqlmap: 0, gobuster: 0, 
+    ratelimit: 0, ffuf: 0, wapiti: 0, nuclei: 0, dns: 0, whois: 0 
+  };
   const autoBatchIds = new Set();
 
   for (const scan of scansToday) {
