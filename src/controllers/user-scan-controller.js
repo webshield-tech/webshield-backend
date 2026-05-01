@@ -14,6 +14,7 @@ import {
 import { refundFailedScanQuota } from "../services/scan-quota.js";
 import { validateHostname } from "../utils/validations/hostname-validation.js";
 import { urlValidation } from "../utils/validations/url-validation.js";
+import { detectPlatform } from "../utils/platform-detector.js";
 
 const execPromise = util.promisify(exec);
 
@@ -556,20 +557,15 @@ function launchScanInBackground(scanId, finalUrl, scanType, cookies = "", scanMo
 
       console.log(`[SCAN_SERVICE] Starting ${scanType} scan (Mode: ${scanMode}) for: ${finalUrl} (ID: ${scanId})`);
 
-      // PLATFORM DETECTION
-      let platform = "Unknown";
+      // ROBUST PLATFORM DETECTION
       try {
-        const { stdout: headers } = await execPromise(`curl -I -s --max-time 5 ${finalUrl}`);
-        const h = headers.toLowerCase();
-        if (h.includes("ubuntu")) platform = "Ubuntu Linux";
-        else if (h.includes("debian")) platform = "Debian Linux";
-        else if (h.includes("centos") || h.includes("redhat")) platform = "RHEL/CentOS Linux";
-        else if (h.includes("win32") || h.includes("iis") || h.includes("microsoft")) platform = "Windows Server";
-        else if (h.includes("apache")) platform = "Apache Server (Linux)";
-        else if (h.includes("nginx")) platform = "Nginx Server (Linux)";
-        else if (h.includes("alpine")) platform = "Alpine Linux";
-        
-        await Scan.findByIdAndUpdate(scanId, { platform });
+        const detection = await detectPlatform(finalUrl);
+        platform = `${detection.platform} (${detection.os})`;
+        await Scan.findByIdAndUpdate(scanId, { 
+          platform,
+          "results.serverInfo": detection.server,
+          "results.techStack": detection.tech
+        });
       } catch (e) {
         console.warn("[SCAN_SERVICE] Platform detection failed:", e.message);
       }

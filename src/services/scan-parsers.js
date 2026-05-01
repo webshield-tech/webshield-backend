@@ -488,13 +488,37 @@ export function parseGobuster(rawOutput = "", target = "") {
 
 export function parseRateLimit(rawOutput = "", target = "") {
   const out = rawOutput || "";
-  const isVulnerable = out.includes("RATE_LIMIT_DETECTED") || out.includes("429 Too Many Requests");
+  const lines = out.split("\n").map(l => l.trim()).filter(Boolean);
   
+  const apiActive = out.includes("RESULT: API_ACTIVE");
+  const rateLimitActive = out.includes("RESULT: RATE_LIMIT_ACTIVE");
+  const requestLimiterActive = out.includes("RESULT: REQUEST_LIMITER_ACTIVE");
+  const noLimiter = out.includes("RESULT: NO_LIMITER_DETECTED");
+
+  const findings = [];
+  if (apiActive) {
+    const apiMatch = out.match(/Found \d+ endpoints: ([^\)]+)/);
+    findings.push(`API Endpoints detected: ${apiMatch ? apiMatch[1] : "Multiple paths identified"}`);
+  } else {
+    findings.push("No standard API endpoints detected at the base URL.");
+  }
+
+  if (rateLimitActive) {
+    findings.push("Rate Limiter is ACTIVE (HTTP 429 detected). The server successfully throttled excessive requests.");
+  } else if (requestLimiterActive) {
+    findings.push("Request Limiter/WAF is ACTIVE (HTTP 403 detected). The security layer blocked the burst test.");
+  } else if (noLimiter) {
+    findings.push("VULNERABILITY: No rate or request limiting detected. The server accepted 100 concurrent requests without throttling.");
+  }
+
   return {
     tool: "ratelimit",
     success: true,
-    vulnerable: isVulnerable,
-    findings: isVulnerable ? ["The website does not seem to have strong rate limiting or returned 429 after multiple requests."] : ["Rate limiting seems to be active or no 429 errors were detected during the burst test."],
+    vulnerable: noLimiter,
+    apiActive,
+    rateLimitActive,
+    requestLimiterActive,
+    findings,
     rawOutput: out,
     target
   };
