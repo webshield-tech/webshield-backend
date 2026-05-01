@@ -97,13 +97,15 @@ export async function firebaseLogin(req, res) {
 
 function getCookieOptions() {
   const isProduction = process.env.NODE_ENV === "production";
+  const domain = process.env.COOKIE_DOMAIN || (isProduction ? ".webshield.tech" : undefined);
   
   return {
     httpOnly: true,
-    secure: true, 
-    sameSite: "none",
+    secure: isProduction, 
+    sameSite: isProduction ? "none" : "lax",
     maxAge: 7 * 24 * 60 * 60 * 1000,
     path: "/",
+    domain: isProduction ? domain : undefined
   };
 }
 
@@ -229,7 +231,7 @@ export async function checkUser(user) {
       };
     }
 
-    if (!userExists.isVerified && !userExists.firebaseUid) {
+    if (!userExists.isVerified && !userExists.firebaseUid && userExists.role !== "admin") {
       console.log(`[AUTH] Email not verified: ${identifier}`);
       return {
         success: false,
@@ -403,7 +405,7 @@ export async function verifyEmail(req, res) {
       return res.status(400).json({ success: false, error: "Account is already verified" });
     }
 
-    if (user.verificationCode !== code || user.verificationCodeExpires < Date.now()) {
+    if (String(user.verificationCode) !== String(code) || user.verificationCodeExpires < Date.now()) {
       return res.status(400).json({ success: false, error: "Invalid or expired verification code" });
     }
 
