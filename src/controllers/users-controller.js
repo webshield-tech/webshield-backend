@@ -61,17 +61,7 @@ export async function firebaseLogin(req, res) {
       { expiresIn: "7d" }
     );
 
-    const isProduction = process.env.NODE_ENV === "production";
-    const domain = process.env.COOKIE_DOMAIN || (isProduction ? ".webshield.tech" : "localhost");
-    
-    res.cookie("token", platformToken, {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: isProduction ? "none" : "lax",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: "/",
-      domain: isProduction ? domain : undefined
-    });
+    res.cookie("token", platformToken, getCookieOptions());
 
     return res.json({
       success: true,
@@ -96,16 +86,18 @@ export async function firebaseLogin(req, res) {
 
 
 function getCookieOptions() {
-  const isProduction = process.env.NODE_ENV === "production";
+  const isProduction = process.env.NODE_ENV === "production" || process.env.JWT_SECRET?.length > 20;
+  // Always use .webshield.tech in prod to cover all subdomains
   const domain = process.env.COOKIE_DOMAIN || (isProduction ? ".webshield.tech" : undefined);
   
   return {
     httpOnly: true,
-    secure: isProduction, 
-    sameSite: isProduction ? "none" : "lax",
+    // Force secure if we are on the real domain
+    secure: isProduction || !!domain, 
+    sameSite: "none", // Always use none for cross-subdomain compatibility
     maxAge: 7 * 24 * 60 * 60 * 1000,
     path: "/",
-    domain: isProduction ? domain : undefined
+    domain: domain
   };
 }
 
