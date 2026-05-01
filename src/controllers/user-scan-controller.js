@@ -560,9 +560,9 @@ function launchScanInBackground(scanId, finalUrl, scanType, cookies = "", scanMo
       // ROBUST PLATFORM DETECTION
       try {
         const detection = await detectPlatform(finalUrl);
-        platform = `${detection.platform} (${detection.os})`;
+        const platformResult = `${detection.platform} (${detection.os})`;
         await Scan.findByIdAndUpdate(scanId, { 
-          platform,
+          platform: platformResult,
           "results.serverInfo": detection.server,
           "results.techStack": detection.tech
         });

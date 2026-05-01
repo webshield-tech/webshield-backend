@@ -2,7 +2,7 @@
 import { aiReport } from "../utils/aiReport.js";
 import { Scan } from "../models/scans-mongoose.js";
 
-const MAX_PROMPT_CHARS = 20000;
+const MAX_PROMPT_CHARS = 12000;
 const SUPPORTED_REPORT_LANGUAGES = new Set([
   "english",
   "urdu",
