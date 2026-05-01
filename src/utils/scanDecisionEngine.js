@@ -27,7 +27,7 @@ export function decideScanPlan(reconData, scanMode = 'deep') {
     setDecision('nmap', 'run', 'Core port scanning fallback', 1.0, ['Host HTTP unreachable']);
     setDecision('nuclei', 'run', 'Core vulnerability scanning fallback', 1.0, ['Host HTTP unreachable']);
     
-    const skippedTools = ['nikto', 'sqlmap', 'wapiti', 'gobuster', 'ssl', 'dns', 'whois'];
+    const skippedTools = ['nikto', 'sqlmap', 'wapiti', 'gobuster', 'ssl', 'dns', 'whois', 'ffuf', 'ratelimit'];
     skippedTools.forEach(t => setDecision(t, 'skip', 'Recon failed, fallback safe scan applied', 1.0, ['Host HTTP unreachable']));
     return plan;
   }
@@ -86,6 +86,20 @@ export function decideScanPlan(reconData, scanMode = 'deep') {
     setDecision('gobuster', 'run', 'Deep scan requested: active directory brute forcing', 0.9);
   } else {
     setDecision('gobuster', 'skip', 'Skipped in Quick Scan mode', 0.95);
+  }
+
+  // 8. FFUF (Fuzzer)
+  if (scanMode === 'deep') {
+    setDecision('ffuf', 'run', 'Deep scan requested: fast fuzzing for hidden endpoints', 0.85);
+  } else {
+    setDecision('ffuf', 'skip', 'Skipped in Quick Scan mode', 0.9);
+  }
+
+  // 9. RateLimit (API / request limiter check)
+  if (scanMode === 'deep') {
+    setDecision('ratelimit', 'run', 'Deep scan requested: request throttling and API checks', 0.8);
+  } else {
+    setDecision('ratelimit', 'skip', 'Skipped in Quick Scan mode', 0.9);
   }
 
   console.log("[DecisionEngine] Smart Plan Generated:", { run: plan.run, skip: plan.skip });

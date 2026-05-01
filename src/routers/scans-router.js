@@ -19,17 +19,7 @@ import {
   downloadBatchReport,
   viewBatchReport,
 } from '../controllers/aiReport-controller.js';
-
-import rateLimit from 'express-rate-limit';
-
-const scanLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10,
-  message: {
-    success: false,
-    error: 'Too many scans initiated from this IP, please try again after 15 minutes',
-  },
-});
+import { scanLimiter } from '../middlewares/rate-limiter.js';
 
 const scanRouter = express.Router();
 scanRouter.use(checkAuth);

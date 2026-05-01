@@ -6,6 +6,11 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API);
 // Use gemini-flash-latest for maximum stability and quota compatibility with this key
 const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
 
+const GEMINI_RETRY = {
+  attempts: 3,
+  baseDelayMs: 600,
+};
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -24,6 +29,33 @@ function stripJsonFences(text = '') {
     .trim();
 }
 
+function isRetryableGeminiError(error) {
+  const message = String(error?.message || '').toLowerCase();
+  const status = error?.status || error?.response?.status || error?.response?.statusCode;
+  return status === 503 || message.includes('503') || message.includes('unavailable') || message.includes('overloaded');
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function withGeminiRetry(action, contextLabel) {
+  let attempt = 0;
+  while (attempt < GEMINI_RETRY.attempts) {
+    try {
+      return await action();
+    } catch (error) {
+      attempt += 1;
+      if (!isRetryableGeminiError(error) || attempt >= GEMINI_RETRY.attempts) {
+        throw error;
+      }
+      const waitMs = GEMINI_RETRY.baseDelayMs * Math.pow(2, attempt - 1);
+      console.warn(`[${contextLabel}] Gemini 503 retry ${attempt}/${GEMINI_RETRY.attempts} in ${waitMs}ms`);
+      await delay(waitMs);
+    }
+  }
+}
+
 function buildFallbackAnalysis(scanInputData) {
   return {
     summary: {
@@ -31,7 +63,7 @@ function buildFallbackAnalysis(scanInputData) {
       overall_status: 'Informational',
       confidence_score: 0.0,
       scan_quality: scanInputData?.scan_type === 'deep' ? 'Deep Scan' : 'Quick Scan',
-      key_message: 'AI analysis could not be completed. Please review the raw scan data below.',
+      key_message: 'AI analysis could not be completed. We have shared the raw scan results below in a safe, readable format.',
     },
     attack_surface: {
       open_ports: scanInputData?.scan_results?.nmap?.open_ports || [],
@@ -42,11 +74,14 @@ function buildFallbackAnalysis(scanInputData) {
     informational_findings: [
       {
         title: 'Raw Data Available',
-        description: 'AI analysis failed, but raw tool output is available for manual review.',
+        description: 'Automated analysis failed, but your scan data is saved. You can still review the details safely.',
       },
     ],
-    prioritized_actions: ['Review raw scan logs', 'Retry AI analysis later'],
-    final_recommendation: 'Manual review required due to AI service disruption.',
+    prioritized_actions: [
+      'Open the raw scan output and look for any warnings highlighted by the tool.',
+      'Re-run the AI analysis later when the service is back online.',
+    ],
+    final_recommendation: 'No action is required right now unless you see clear warnings in the raw output.',
   };
 }
 
@@ -119,8 +154,11 @@ OUTPUT FORMAT — STRICT JSON ONLY:
     // Gemini 1.5 has 1M token limit, so we don't need to compress the payload!
     const payload = JSON.stringify(scanInputData);
     const prompt = `${systemPrompt}\n\nAnalyze this scan data:\n${payload}`;
-    
-    const result = await chatSession.sendMessage(prompt);
+
+    const result = await withGeminiRetry(
+      () => chatSession.sendMessage(prompt),
+      'analyzeVulnerabilities'
+    );
     const responseText = result.response.text();
     
     const parsed = JSON.parse(stripJsonFences(responseText));
@@ -159,10 +197,14 @@ Raw scan data to analyze:
 ${summaryText}`;
 
   try {
-    const result = await model.generateContent({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.3 },
-    });
+    const result = await withGeminiRetry(
+      () =>
+        model.generateContent({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.3 },
+        }),
+      'aiReport'
+    );
     return result.response.text();
   } catch (error) {
     console.error('[aiReport] Gemini Error:', error?.message || error);
@@ -183,13 +225,17 @@ Return ONLY a valid JSON object with these exact keys:
 - "poc_result": Safe PoC success message.`;
 
   try {
-    const result = await model.generateContent({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: { 
-        temperature: 0.3,
-        responseMimeType: "application/json" 
-      },
-    });
+    const result = await withGeminiRetry(
+      () =>
+        model.generateContent({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.3,
+            responseMimeType: "application/json",
+          },
+        }),
+      'generatePoCExplanation'
+    );
     
     return JSON.parse(stripJsonFences(result.response.text()));
   } catch (error) {

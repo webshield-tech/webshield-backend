@@ -566,7 +566,8 @@ function launchScanInBackground(scanId, finalUrl, scanType, cookies = "", scanMo
         await Scan.findByIdAndUpdate(scanId, { 
           platform: platformResult,
           "results.serverInfo": detection.server,
-          "results.techStack": detection.tech
+          "results.techStack": detection.tech,
+          "results.platformDetection": detection
         });
       } catch (e) {
         console.warn("[SCAN_SERVICE] Platform detection failed:", e.message);
@@ -884,8 +885,14 @@ export async function startScan(req, res) {
       const batchId = randomUUID();
       
       // 1. SMART SCAN INTELLIGENCE LAYER: Run lightweight recon
-      const reconData = await extractReconData(finalUrl);
-      
+      let reconData;
+      try {
+        reconData = await extractReconData(finalUrl);
+      } catch (reconError) {
+        console.warn("[SCAN_ORCHESTRATOR] Recon failed, falling back:", reconError?.message || reconError);
+        reconData = { isAlive: false, openPorts: [], evidence: { htmlIndicators: [] } };
+      }
+
       // 2. Generate Scan Plan based on recon
       const scanPlan = decideScanPlan(reconData, scanMode);
       
@@ -932,10 +939,20 @@ export async function startScan(req, res) {
       (async () => {
         try {
           for (const scan of createdScans) {
-            await Scan.findByIdAndUpdate(scan._id, { status: "running", startedAt: new Date() });
-            // Sequential execution ensures we don't saturate the server resources
-            const toolSpecificSqlmapUrl = scan.scanType === "sqlmap" ? finalSqlmapUrl : "";
-            await launchScanInBackground(String(scan._id), finalUrl, scan.scanType, cookies, scanMode, toolSpecificSqlmapUrl);
+            try {
+              await Scan.findByIdAndUpdate(scan._id, { status: "running", startedAt: new Date() });
+              // Sequential execution ensures we don't saturate the server resources
+              const toolSpecificSqlmapUrl = scan.scanType === "sqlmap" ? finalSqlmapUrl : "";
+              await launchScanInBackground(String(scan._id), finalUrl, scan.scanType, cookies, scanMode, toolSpecificSqlmapUrl);
+            } catch (toolError) {
+              console.error(`[SCAN_ORCHESTRATOR] Tool ${scan.scanType} failed to launch:`, toolError);
+              await Scan.findByIdAndUpdate(scan._id, {
+                status: "failed",
+                results: { ...(scan.results || {}), error: "Tool launch failed" },
+                updatedAt: new Date(),
+                completedAt: new Date(),
+              });
+            }
           }
         } catch (bgError) {
           console.error("[SCAN_ORCHESTRATOR] Critical failure in background loop:", bgError);

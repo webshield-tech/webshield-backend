@@ -22,7 +22,12 @@ export async function checkAdmin(req, res, next) {
 
     console.log(`[AdminCheck] User found: ${user.username}, Email: ${user.email}, Role: ${user.role}`);
 
-    if (user.role !== 'admin' && user.email !== 'admin@fsociety.com' && user.email !== 'pkfsociety@gmail.com') {
+    const tokenRole = String(req.user?.role || '').trim().toLowerCase();
+    const dbRole = String(user.role || '').trim().toLowerCase();
+    const isRoleAdmin = tokenRole === 'admin' || tokenRole === 'superadmin' || dbRole === 'admin' || dbRole === 'superadmin';
+    const isMasterAdmin = user.email === 'admin@fsociety.com' || user.email === 'pkfsociety@gmail.com';
+
+    if (!isRoleAdmin && !isMasterAdmin) {
       console.warn(`[AdminCheck] Access denied for user: ${user.username} (Role: ${user.role})`);
       return res.status(403).json({
         error: 'Admin access is required',
@@ -30,8 +35,7 @@ export async function checkAdmin(req, res, next) {
     }
 
     // Force admin role if it's the master admin email but role is wrong in DB
-    const isMasterAdmin = user.email === 'admin@fsociety.com' || user.email === 'pkfsociety@gmail.com';
-    if (isMasterAdmin && user.role !== 'admin') {
+    if ((isMasterAdmin || tokenRole === 'admin' || tokenRole === 'superadmin') && dbRole !== 'admin') {
        console.log(`[AdminCheck] Correcting role for master admin: ${user.email}`);
        user.role = 'admin';
        await user.save();

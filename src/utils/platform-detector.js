@@ -11,6 +11,7 @@ export async function detectPlatform(url) {
   let os = "Unknown (Cloud/Proxy protected)";
   let server = "Unknown";
   let tech = [];
+  let confidence = 0.35;
 
   try {
     // 1. Get Headers
@@ -21,6 +22,7 @@ export async function detectPlatform(url) {
     const serverMatch = headers.match(/Server:\s*(.+)/i);
     if (serverMatch) {
       server = serverMatch[1].trim();
+      confidence += 0.35;
     }
 
     // OS Detection based on Server/X-Powered-By
@@ -39,6 +41,7 @@ export async function detectPlatform(url) {
     else if (h.includes("vercel")) platform = "Vercel Platform";
     else if (h.includes("netlify")) platform = "Netlify Platform";
     else if (h.includes("litespeed")) platform = "LiteSpeed Server";
+    if (platform !== "Unknown") confidence += 0.2;
     
     // Tech Stack
     if (h.includes("php")) tech.push("PHP");
@@ -59,6 +62,9 @@ export async function detectPlatform(url) {
         } catch(e) {}
     }
 
+    if (tech.length > 0) confidence += 0.1;
+    confidence = Math.min(confidence, 0.95);
+
   } catch (error) {
     console.error("[PlatformDetector] Error:", error.message);
   }
@@ -68,6 +74,7 @@ export async function detectPlatform(url) {
     os,
     server,
     tech: tech.length > 0 ? tech.join(", ") : "Not detected",
+    confidence,
     detectedAt: new Date()
   };
 }
