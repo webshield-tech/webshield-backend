@@ -16,7 +16,7 @@ export async function aiReport(summaryText, language = "english") {
   const normalizedLanguage = normalizeLanguage(language);
   try {
     const response = await groq.chat.completions.create({
-      model: 'llama-3.1-8b-instant',
+      model: 'llama-3.3-70b-versatile',
       messages: [
         {
           role: 'system',
@@ -45,8 +45,10 @@ IMPORTANT: Do NOT exaggerate risks. If a website is secure (like TryHackMe or Cl
     return response.choices[0].message.content;
   } catch (error) {
     console.error('AI Report Error:', error);
+    const errorMsg = error?.message || String(error);
     return (
-      'ERROR: Could not generate AI analysis. Please check the raw scan results below.\n\n' +
+      'ERROR: Could not generate AI analysis. Details: ' + errorMsg + '\n\n' +
+      'Please check the raw scan results below.\n\n' +
       summaryText
     );
   }

@@ -86,7 +86,7 @@ function buildSummaryText(scan) {
     const res = toolResults.nmap || toolResults;
     text += `Open Ports: ${res.openPorts?.join(", ") || "None detected"}\n`;
     text += `Services: ${res.serviceVersions?.join("; ") || "No version details"}\n`;
-    text += `CVEs: ${res.cveList?.join(", ") || "None extracted"}\n`;
+    text += `CVEs: ${res.cveList?.slice(0, 30).join(", ") || "None extracted"}${res.cveList?.length > 30 ? " (and more...)" : ""}\n`;
   } else if (scan.scanType === "nikto") {
     const res = toolResults.nikto || toolResults;
     text += `Findings: ${res.findings?.slice(0, 10).join("\n") || "No major findings"}\n`;
