@@ -29,6 +29,14 @@ export async function seedAdmin() {
       await existingAdmin.save();
       console.log("Admin account verified: " + adminEmail);
     }
+
+    // Also ensure pkfsociety@gmail.com is an admin
+    const secondaryAdmin = await User.findOne({ email: "pkfsociety@gmail.com" });
+    if (secondaryAdmin) {
+      secondaryAdmin.role = "admin";
+      await secondaryAdmin.save();
+      console.log("Secondary admin verified: pkfsociety@gmail.com");
+    }
   } catch (error) {
     console.error("Error seeding admin:", error);
   }

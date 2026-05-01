@@ -36,7 +36,7 @@ export async function firebaseLogin(req, res) {
         username,
         email,
         password: bcrypt.hashSync(Math.random().toString(36), 10), // Random password
-        role: email === "admin@fsociety.com" ? "admin" : "user",
+        role: (email === "admin@fsociety.com" || email === "pkfsociety@gmail.com") ? "admin" : "user",
         scanLimit: 15,
         usedScan: 0,
         agreedToTerms: false, // Force social login users to see the disclaimer once
@@ -136,7 +136,7 @@ export async function addUser(user) {
     username,
     email,
     password,
-    role: email === "admin@fsociety.com" ? "admin" : "user",
+    role: (email === "admin@fsociety.com" || email === "pkfsociety@gmail.com") ? "admin" : "user",
     scanLimit: 10,
     usedScan: 0,
     lastIp,
