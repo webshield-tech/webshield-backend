@@ -63,8 +63,30 @@ const corsOptions = {
   allowedHeaders: ["Content-Type", "Authorization", "Cookie", "X-Requested-With"],
 };
 
-// 1. CORS FIRST
-app.use(cors(corsOptions));
+// 1. CORS FIRST (custom middleware to avoid path-to-regexp issues with some environments)
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  console.log(`[CORS Check] Origin: ${origin}`);
+
+  if (isAllowedOrigin(origin) || allowAllCors) {
+    res.header("Access-Control-Allow-Origin", origin || "*");
+    res.header("Access-Control-Allow-Credentials", "true");
+    res.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+    res.header(
+      "Access-Control-Allow-Headers",
+      "Content-Type,Authorization,Cookie,X-Requested-With"
+    );
+
+    if (req.method === "OPTIONS") {
+      return res.sendStatus(200);
+    }
+
+    return next();
+  }
+
+  console.warn(`[CORS Blocked] Origin not allowed: ${origin}`);
+  return res.status(403).send("Not allowed by CORS");
+});
 
 // 2. PARSERS
 app.use(express.json({ limit: "1mb" }));
