@@ -73,3 +73,6 @@ export async function checkAuth(req, res, next) {
 }
 
 export const checkUserAuth = checkAuth;
+
+// Provide a default export for compatibility with older import styles
+export default checkAuth;
