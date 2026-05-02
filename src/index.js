@@ -35,10 +35,22 @@ const allowedOrigins = [
   ...envAllowedOrigins,
 ].filter(Boolean);
 
+const isAllowedOrigin = (origin) => {
+  if (!origin) return true;
+  if (allowAllCors) return true;
+
+  return (
+    allowedOrigins.includes(origin) ||
+    origin.endsWith(".webshield.tech") ||
+    origin === "https://webshield.tech" ||
+    origin === "https://www.webshield.tech"
+  );
+};
+
 const corsOptions = {
   origin: function (origin, callback) {
     console.log(`[CORS Check] Origin: ${origin}`);
-    if (!origin || allowedOrigins.includes(origin) || origin.includes('webshield.tech') || allowAllCors) {
+    if (isAllowedOrigin(origin)) {
       callback(null, true);
     } else {
       console.warn(`[CORS Blocked] Origin not allowed: ${origin}`);
@@ -52,6 +64,7 @@ const corsOptions = {
 
 // 1. CORS FIRST
 app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
 
 // 2. PARSERS
 app.use(express.json({ limit: "1mb" }));
