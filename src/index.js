@@ -112,12 +112,34 @@ connectDB().then(() => {
 // Mount API routes under a base path. Frontend may auto-add `/api/v1`.
 const apiBase = process.env.API_BASE_PATH || "/api/v1";
 
+// Log the API base so deployments surface the effective path in logs
+console.log(`[API BASE] Using API base path: ${apiBase}`);
+
+// Backwards-compat: mount routes both at root and under the api base.
+// This avoids 404s when a proxy rewrites/strips prefixes or when an
+// older frontend/backend expects the legacy paths.
+app.use(`/user`, userRouter);
 app.use(`${apiBase}/user`, userRouter);
+
+app.use(`/scan`, scanRouter);
 app.use(`${apiBase}/scan`, scanRouter);
+
+app.use(`/auth`, authRouter);
 app.use(`${apiBase}/auth`, authRouter);
+
+app.use(`/admin`, adminRouter);
 app.use(`${apiBase}/admin`, adminRouter);
+
+app.use(`/api/exploit`, dataRouter);
 app.use(`${apiBase}/exploit`, dataRouter);
+
+app.use(`/notifications`, notificationRouter);
 app.use(`${apiBase}/notifications`, notificationRouter);
+
+// Provide a health route at the api base so requests to `/api/v1/` return 200
+app.get(`${apiBase}/`, (req, res) => {
+  res.json({ message: "Vuln Spectra API base is reachable", base: apiBase });
+});
 
 app.get("/", (req, res) => {
   res.json({ message: "Vuln Spectra Backend server is running" });
