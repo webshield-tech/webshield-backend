@@ -7,6 +7,7 @@ import scanRouter from "./routers/scans-router.js";
 import authRouter from "./routers/auth-router.js";
 import adminRouter from "./routers/admin-router.js";
 import dataRouter from "./routers/data-router.js";
+import notificationRouter from "./routers/notification-router.js";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
 
@@ -78,6 +79,7 @@ app.use("/scan", scanRouter);
 app.use("/auth", authRouter);
 app.use("/admin", adminRouter);
 app.use("/api/exploit", dataRouter);
+app.use("/notifications", notificationRouter);
 
 app.get("/", (req, res) => {
   res.json({ message: "Vuln Spectra Backend server is running" });
