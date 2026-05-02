@@ -893,8 +893,10 @@ export async function startScan(req, res) {
         reconData = { isAlive: false, openPorts: [], evidence: { htmlIndicators: [] } };
       }
 
-      // 2. Generate Scan Plan based on recon
-      const scanPlan = decideScanPlan(reconData, scanMode);
+      // 2. Generate Scan Plan based on recon.
+      // Auto-scan should use the full smart sequence on normal websites, while
+      // frontend-only targets are trimmed to the frontend-safe toolset.
+      const scanPlan = decideScanPlan(reconData, "deep");
       
       // We only insert documents for the tools we decided to RUN
       const scanDocs = scanPlan.run.map((tool) => ({

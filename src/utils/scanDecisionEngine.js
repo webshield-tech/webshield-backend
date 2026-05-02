@@ -72,11 +72,17 @@ export function decideScanPlan(reconData, scanMode = 'deep') {
     setDecision('wapiti', 'skip', 'No input forms detected', 0.85, ['No <form> elements found']);
   }
 
+  if (reconData.isStaticFrontend) {
+    setDecision('ratelimit', 'skip', 'Frontend-only target detected (no backend/API surface to stress-test)', 0.9, evidence.htmlIndicators);
+  }
+
   // 4. Deep discovery / auxiliary checks
   if (scanMode === 'deep') {
     setDecision('gobuster', 'run', 'Deep scan requested: active directory brute forcing', 0.9);
     setDecision('ffuf', 'run', 'Deep scan requested: fast fuzzing for hidden endpoints', 0.85);
-    setDecision('ratelimit', 'run', 'Deep scan requested: request throttling and API checks', 0.8);
+    if (!reconData.isStaticFrontend) {
+      setDecision('ratelimit', 'run', 'Deep scan requested: request throttling and API checks', 0.8);
+    }
     setDecision('dns', 'run', 'Deep scan requested: domain enumeration', 0.9);
     setDecision('whois', 'run', 'Deep scan requested: domain ownership', 0.9);
   } else {
