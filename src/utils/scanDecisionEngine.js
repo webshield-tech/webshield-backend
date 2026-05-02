@@ -89,3 +89,4 @@ export function decideScanPlan(reconData, scanMode = 'deep') {
 
   console.log("[DecisionEngine] Smart Plan Generated:", { run: plan.run, skip: plan.skip });
   return plan;
+}
