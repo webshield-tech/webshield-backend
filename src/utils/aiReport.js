@@ -3,8 +3,12 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API);
-// Use gemini-flash-latest for maximum stability and quota compatibility with this key
-const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
+const GEMINI_MODEL_CANDIDATES = [
+  process.env.GEMINI_MODEL,
+  'gemini-2.5-flash',
+  'gemini-flash-latest',
+  'gemini-1.5-flash',
+].filter(Boolean);
 
 const GEMINI_RETRY = {
   attempts: 3,
@@ -37,6 +41,37 @@ function isRetryableGeminiError(error) {
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function createModel(modelName) {
+  return genAI.getGenerativeModel({ model: modelName });
+}
+
+async function runGeminiWithFallback(actionFactory, contextLabel) {
+  let lastError = null;
+
+  for (const modelName of GEMINI_MODEL_CANDIDATES) {
+    const candidateModel = createModel(modelName);
+    try {
+      return await actionFactory(candidateModel);
+    } catch (error) {
+      lastError = error;
+      const message = String(error?.message || '').toLowerCase();
+      const status = error?.status || error?.response?.status || error?.response?.statusCode;
+      const looksLikeMissingModel =
+        status === 404 ||
+        message.includes('not found') ||
+        message.includes('model') && message.includes('not found');
+
+      if (!looksLikeMissingModel) {
+        throw error;
+      }
+
+      console.warn(`[${contextLabel}] Gemini model unavailable: ${modelName}`);
+    }
+  }
+
+  throw lastError || new Error('No Gemini model could be initialized');
 }
 
 async function withGeminiRetry(action, contextLabel) {
@@ -143,20 +178,23 @@ OUTPUT FORMAT — STRICT JSON ONLY:
 }`;
 
   try {
-    // We use responseMimeType to force JSON output natively (Gemini feature)
-    const chatSession = model.startChat({
-      generationConfig: {
-        temperature: 0.2,
-        responseMimeType: "application/json",
-      },
-    });
-
-    // Gemini 1.5 has 1M token limit, so we don't need to compress the payload!
     const payload = JSON.stringify(scanInputData);
     const prompt = `${systemPrompt}\n\nAnalyze this scan data:\n${payload}`;
 
-    const result = await withGeminiRetry(
-      () => chatSession.sendMessage(prompt),
+    const result = await runGeminiWithFallback(
+      (candidateModel) => {
+        const chatSession = candidateModel.startChat({
+          generationConfig: {
+            temperature: 0.2,
+            responseMimeType: 'application/json',
+          },
+        });
+
+        return withGeminiRetry(
+          () => chatSession.sendMessage(prompt),
+          'analyzeVulnerabilities'
+        );
+      },
       'analyzeVulnerabilities'
     );
     const responseText = result.response.text();
@@ -197,12 +235,16 @@ Raw scan data to analyze:
 ${summaryText}`;
 
   try {
-    const result = await withGeminiRetry(
-      () =>
-        model.generateContent({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.3 },
-        }),
+    const result = await runGeminiWithFallback(
+      (candidateModel) =>
+        withGeminiRetry(
+          () =>
+            candidateModel.generateContent({
+              contents: [{ role: 'user', parts: [{ text: prompt }] }],
+              generationConfig: { temperature: 0.3 },
+            }),
+          'aiReport'
+        ),
       'aiReport'
     );
     return result.response.text();
@@ -225,15 +267,19 @@ Return ONLY a valid JSON object with these exact keys:
 - "poc_result": Safe PoC success message.`;
 
   try {
-    const result = await withGeminiRetry(
-      () =>
-        model.generateContent({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.3,
-            responseMimeType: "application/json",
-          },
-        }),
+    const result = await runGeminiWithFallback(
+      (candidateModel) =>
+        withGeminiRetry(
+          () =>
+            candidateModel.generateContent({
+              contents: [{ role: 'user', parts: [{ text: prompt }] }],
+              generationConfig: {
+                temperature: 0.3,
+                responseMimeType: 'application/json',
+              },
+            }),
+          'generatePoCExplanation'
+        ),
       'generatePoCExplanation'
     );
     
