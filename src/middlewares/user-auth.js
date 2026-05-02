@@ -5,11 +5,13 @@ dotenv.config();
 
 export async function checkAuth(req, res, next) {
   const cookies = req.cookies || {};
-  let token = cookies.token;
+  let token = null;
 
-  // Fallback to Authorization header if cookie is missing
-  if (!token && req.headers.authorization && req.headers.authorization.startsWith("Bearer ")) {
+  // Prefer the active bearer token from the frontend, then fall back to the cookie.
+  if (req.headers.authorization && req.headers.authorization.startsWith("Bearer ")) {
     token = req.headers.authorization.split(" ")[1];
+  } else if (cookies.token) {
+    token = cookies.token;
   }
 
   // Check if token exists

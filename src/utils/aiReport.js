@@ -139,6 +139,9 @@ CORE RULES & CORRELATION LOGIC:
    - If weak evidence or single tool (e.g., Nikto version inference), reduce severity/confidence.
 5. Provide a realistic risk score (0-100).
 6. Output MUST be in ${normalizedLanguage}.
+7. Use simple wording that a non-technical website owner can understand.
+8. Add a short, platform-specific fix in platform_specific_fix when the detected platform is known.
+9. If the target is safe or only shows expected ports, say so clearly.
 
 OUTPUT FORMAT — STRICT JSON ONLY:
 {
@@ -168,7 +171,7 @@ OUTPUT FORMAT — STRICT JSON ONLY:
       "evidence": "<Proof>",
       "affected_area": "<URL/port>",
       "recommendation": "<Fix>",
-      "platform_specific_fix": "<Fix for detected platform>",
+      "platform_specific_fix": "<Fix for detected platform in plain wording>",
       "references": ["<CVE/CWE>"]
     }
   ],
