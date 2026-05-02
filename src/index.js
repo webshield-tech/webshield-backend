@@ -8,7 +8,6 @@ import authRouter from "./routers/auth-router.js";
 import adminRouter from "./routers/admin-router.js";
 import dataRouter from "./routers/data-router.js";
 import notificationRouter from "./routers/notification-router.js";
-import cors from "cors";
 import rateLimit from "express-rate-limit";
 
 import { seedAdmin } from "./utils/seed-admin.js";
@@ -39,31 +38,15 @@ const allowedOrigins = [
 const isAllowedOrigin = (origin) => {
   if (!origin) return true;
   if (allowAllCors) return true;
-
   return (
     allowedOrigins.includes(origin) ||
-    origin.endsWith(".webshield.tech") ||
+    (origin && origin.endsWith && origin.endsWith(".webshield.tech")) ||
     origin === "https://webshield.tech" ||
     origin === "https://www.webshield.tech"
   );
 };
 
-const corsOptions = {
-  origin: function (origin, callback) {
-    console.log(`[CORS Check] Origin: ${origin}`);
-    if (isAllowedOrigin(origin)) {
-      callback(null, true);
-    } else {
-      console.warn(`[CORS Blocked] Origin not allowed: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "Cookie", "X-Requested-With"],
-};
-
-// 1. CORS FIRST (custom middleware to avoid path-to-regexp issues with some environments)
+// Custom CORS middleware
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   console.log(`[CORS Check] Origin: ${origin}`);
@@ -72,15 +55,8 @@ app.use((req, res, next) => {
     res.header("Access-Control-Allow-Origin", origin || "*");
     res.header("Access-Control-Allow-Credentials", "true");
     res.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
-    res.header(
-      "Access-Control-Allow-Headers",
-      "Content-Type,Authorization,Cookie,X-Requested-With"
-    );
-
-    if (req.method === "OPTIONS") {
-      return res.sendStatus(200);
-    }
-
+    res.header("Access-Control-Allow-Headers", "Content-Type,Authorization,Cookie,X-Requested-With");
+    if (req.method === "OPTIONS") return res.sendStatus(200);
     return next();
   }
 
@@ -88,27 +64,21 @@ app.use((req, res, next) => {
   return res.status(403).send("Not allowed by CORS");
 });
 
-// 2. PARSERS
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 app.use(cookieParser());
 
-// 3. RATE LIMITING
 const globalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 300, // Limit each IP to 300 requests per 15 mins
+  windowMs: 15 * 60 * 1000,
+  max: 300,
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, error: "Too many requests from this IP. Please try again after 15 minutes." },
 });
 app.use(globalLimiter);
 
-// 4. DATABASE
-connectDB().then(() => {
-  seedAdmin();
-});
+connectDB().then(() => { seedAdmin(); });
 
-// 5. ROUTES
 app.use("/user", userRouter);
 app.use("/scan", scanRouter);
 app.use("/auth", authRouter);
@@ -116,17 +86,11 @@ app.use("/admin", adminRouter);
 app.use("/api/exploit", dataRouter);
 app.use("/notifications", notificationRouter);
 
-app.get("/", (req, res) => {
-  res.json({ message: "Vuln Spectra Backend server is running" });
-});
+app.get("/", (req, res) => res.json({ message: "Vuln Spectra Backend server is running" }));
 
-// 6. GLOBAL ERROR HANDLER
 app.use((err, req, res, next) => {
   console.error("Global error:", err);
-  res.status(500).json({
-    success: false,
-    error: "Internal server error",
-  });
+  res.status(500).json({ success: false, error: "Internal server error" });
 });
 
 const server = app.listen(port, () => {

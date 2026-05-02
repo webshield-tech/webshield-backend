@@ -14,7 +14,7 @@
     "@google/generative-ai": "^0.24.1",
     "axios": "^1.15.2",
     "bcrypt": "^6.0.0",
-    "cheerio": "^1.2.0",
+    "cheerio": "^1.0.0-rc.12",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
@@ -28,7 +28,8 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.19.3",
     "nodemailer": "^7.0.13",
-    "nodemon": "^3.1.11"
+    "nodemon": "^3.1.11",
+    "undici": "^5.28.4"
   },
   "devDependencies": {
     "prettier": "^3.7.4"
