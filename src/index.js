@@ -65,7 +65,6 @@ const corsOptions = {
 
 // 1. CORS FIRST
 app.use(cors(corsOptions));
-app.options("*", cors(corsOptions));
 
 // 2. PARSERS
 app.use(express.json({ limit: "1mb" }));
