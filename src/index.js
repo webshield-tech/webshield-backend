@@ -109,12 +109,15 @@ connectDB().then(() => {
 });
 
 // 5. ROUTES
-app.use("/user", userRouter);
-app.use("/scan", scanRouter);
-app.use("/auth", authRouter);
-app.use("/admin", adminRouter);
-app.use("/api/exploit", dataRouter);
-app.use("/notifications", notificationRouter);
+// Mount API routes under a base path. Frontend may auto-add `/api/v1`.
+const apiBase = process.env.API_BASE_PATH || "/api/v1";
+
+app.use(`${apiBase}/user`, userRouter);
+app.use(`${apiBase}/scan`, scanRouter);
+app.use(`${apiBase}/auth`, authRouter);
+app.use(`${apiBase}/admin`, adminRouter);
+app.use(`${apiBase}/exploit`, dataRouter);
+app.use(`${apiBase}/notifications`, notificationRouter);
 
 app.get("/", (req, res) => {
   res.json({ message: "Vuln Spectra Backend server is running" });
