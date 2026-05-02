@@ -18,6 +18,7 @@ dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 4000;
+app.set("trust proxy", 1);
 const configuredFrontendUrl = process.env.FRONTEND_URL;
 const allowAllCors = String(process.env.CORS_ALLOW_ALL || "").toLowerCase() === "true";
 const envAllowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || "")
