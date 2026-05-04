@@ -1,6 +1,2 @@
 node_modules
 .env
-**/helper/
-src/utils/helper/
-src/config/serviceAccountKey.json
-*.firebase-adminsdk-*.json
