@@ -6,6 +6,7 @@ import { verifyEmailExistence } from "../utils/email-verifier.js";
 import admin from "../config/firebase-admin.js";
 import { sendVerificationEmail } from "../utils/email-service.js";
 import crypto from "crypto";
+import { ensureDailyScanReset } from "../utils/daily-scan-reset.js";
 
 export async function firebaseLogin(req, res) {
   try {
@@ -39,6 +40,7 @@ export async function firebaseLogin(req, res) {
         role: (email === "admin@fsociety.com" || email === "pkfsociety@gmail.com") ? "admin" : "user",
         scanLimit: 15,
         usedScan: 0,
+        lastScanQuotaResetAt: new Date(),
         agreedToTerms: false, // Force social login users to see the disclaimer once
         lastIp: req.headers["x-forwarded-for"] || req.socket.remoteAddress,
         firebaseUid: uid,
@@ -53,6 +55,9 @@ export async function firebaseLogin(req, res) {
       await user.save();
       console.log(`[SocialAuth] Logged in existing user: ${email}`);
     }
+
+    const resetState = await ensureDailyScanReset(user._id);
+    const userSnapshot = resetState.user || user;
 
     // Generate our platform JWT
     const platformToken = jwt.sign(
@@ -72,8 +77,8 @@ export async function firebaseLogin(req, res) {
         username: user.username,
         email: user.email,
         role: user.role,
-        scanLimit: user.scanLimit,
-        usedScan: user.usedScan,
+        scanLimit: userSnapshot.scanLimit,
+        usedScan: userSnapshot.usedScan || 0,
         agreedToTerms: user.agreedToTerms,
       }
     });
@@ -85,17 +90,15 @@ export async function firebaseLogin(req, res) {
 }
 
 
-function getCookieOptions() {
-  const isProduction = process.env.NODE_ENV === "production" || process.env.JWT_SECRET?.length > 20;
-  // Always use .webshield.tech in prod to cover all subdomains
+export function getCookieOptions() {
+  const isProduction = process.env.NODE_ENV === "production";
+  // Use .webshield.tech in prod to cover all subdomains
   const domain = process.env.COOKIE_DOMAIN || (isProduction ? ".webshield.tech" : undefined);
   
   return {
     httpOnly: true,
-    // Force secure if we are on the real domain
-    secure: isProduction || !!domain, 
-    sameSite: "none", // Always use none for cross-subdomain compatibility
-    maxAge: 7 * 24 * 60 * 60 * 1000,
+    secure: isProduction || !!domain,
+    sameSite: "none", // Always use none for cross-site / cross-subdomain
     path: "/",
     domain: domain
   };
@@ -242,6 +245,9 @@ export async function checkUser(user) {
       };
     }
 
+    const resetState = await ensureDailyScanReset(userExists._id);
+    const userSnapshot = resetState.user || userExists;
+
     console.log(`[AUTH] Login successful for: ${identifier}`);
     const token = jwt.sign(
       {
@@ -264,8 +270,8 @@ export async function checkUser(user) {
         username: userExists.username,
         email: userExists.email,
         role: userExists.role,
-        scanLimit: userExists.scanLimit,
-        usedScan: userExists.usedScan || 0,
+        scanLimit: userSnapshot.scanLimit,
+        usedScan: userSnapshot.usedScan || 0,
         agreedToTerms: userExists.agreedToTerms || false,
       },
     };
@@ -351,6 +357,7 @@ export async function getUserProfile(req, res) {
     const userId = req.user.userId;
     console.log("=== GET PROFILE REQUEST ===");
     console.log("User ID:", userId);
+    await ensureDailyScanReset(userId);
     const user = await User.findById(userId).select("-password");
     if (!user) {
       return res.status(404).json({

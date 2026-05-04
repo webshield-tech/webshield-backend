@@ -620,11 +620,16 @@ export const generateBatchAIReport = async (req, res) => {
     const requestedLanguage = normalizeReportLanguage(req.body?.language);
     const scans = await getBatchScansOrThrow(batchId, userId);
 
-    const allCompleted = scans.every((s) => s.status === 'completed');
-    if (!allCompleted) {
-      return res
-        .status(400)
-        .json({ success: false, error: 'Batch scans are not all completed yet' });
+    // Allow report generation even when some tools failed — failed is still a terminal state
+    const TERMINAL = ["completed", "failed", "cancelled", "canceled"];
+    const allTerminal = scans.every((s) => TERMINAL.includes(s.status));
+    if (!allTerminal) {
+      const stillRunning = scans.filter(s => !TERMINAL.includes(s.status));
+      return res.status(400).json({
+        success: false,
+        error: `${stillRunning.length} scan(s) still in progress. Wait for all scans to finish before generating report.`,
+        pendingCount: stillRunning.length,
+      });
     }
 
     // ── 1. Build structured scan input for the AI ──────────────────────────

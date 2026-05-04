@@ -10,6 +10,10 @@ import {
   startImpactDemo,
   getImpactDemo,
   getTodayStats,
+  getToolAvailability,
+  detectWebsite,
+  dnsLookupInline,
+  whoisLookupInline,
 } from '../controllers/user-scan-controller.js';
 import {
   generateAIReportForScan,
@@ -24,15 +28,19 @@ import { scanLimiter } from '../middlewares/rate-limiter.js';
 const scanRouter = express.Router();
 scanRouter.use(checkAuth);
 
-// ── Non-parameterised routes first ──────────────────────────────────────────
+// ── Utility / inline routes (no scan pipeline) ──────────────────────────────
 scanRouter.post('/ping', pingTarget);
+scanRouter.post('/detect', detectWebsite);          // Website type detection
+scanRouter.get('/tools/availability', getToolAvailability); // Tool preflight check
+scanRouter.post('/dns-lookup', dnsLookupInline);    // Inline DNS lookup (no progress page)
+scanRouter.post('/whois-lookup', whoisLookupInline); // Inline WHOIS lookup (no progress page)
+
+// ── Core scan routes ─────────────────────────────────────────────────────────
 scanRouter.post('/start', scanLimiter, startScan);
 scanRouter.get('/history', getScanHistory);
 scanRouter.get('/stats/today', getTodayStats);
 
 // ── Batch routes BEFORE /:id wildcard ───────────────────────────────────────
-// (Express matches routes top-to-bottom; if /:id comes first,
-//  "/batch/..." would be captured as id="batch" and fail.)
 scanRouter.get('/batch/:batchId', getBatchResults);
 scanRouter.post('/batch/:batchId/report/generate', generateBatchAIReport);
 scanRouter.get('/batch/:batchId/report/view', viewBatchReport);

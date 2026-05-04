@@ -9,6 +9,10 @@ import adminRouter from "./routers/admin-router.js";
 import dataRouter from "./routers/data-router.js";
 import notificationRouter from "./routers/notification-router.js";
 import rateLimit from "express-rate-limit";
+import { injectionDetector } from "./middlewares/security.js";
+import helmet from "helmet";
+import mongoSanitize from "express-mongo-sanitize";
+import cors from "cors";
 
 import { seedAdmin } from "./utils/seed-admin.js";
 import { killAllProcesses } from "./services/scan-runner.js";
@@ -18,6 +22,21 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 4000;
 app.set("trust proxy", 1);
+
+// Security headers — must be first middleware
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  contentSecurityPolicy: false, // CSP managed at CDN/Vercel level
+}));
+
+// Sanitize req.body / req.params / req.query to prevent NoSQL injection
+app.use((req, res, next) => {
+  if (req.body) mongoSanitize.sanitize(req.body);
+  if (req.query) mongoSanitize.sanitize(req.query);
+  if (req.params) mongoSanitize.sanitize(req.params);
+  if (req.headers) mongoSanitize.sanitize(req.headers);
+  next();
+});
 const configuredFrontendUrl = process.env.FRONTEND_URL;
 const allowAllCors = String(process.env.CORS_ALLOW_ALL || "").toLowerCase() === "true";
 const envAllowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || "")
@@ -31,42 +50,55 @@ const allowedOrigins = [
   "https://api.webshield.tech",
   "https://webshield-frontend.vercel.app",
   "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "http://0.0.0.0:5173",
   configuredFrontendUrl,
   ...envAllowedOrigins,
 ].filter(Boolean);
 
+const normalizeOrigin = (origin) => String(origin || "").replace(/\/+$/, "");
+const normalizedAllowedOrigins = allowedOrigins.map((origin) => normalizeOrigin(origin));
+
 const isAllowedOrigin = (origin) => {
   if (!origin) return true;
   if (allowAllCors) return true;
+
+  const normalized = normalizeOrigin(origin);
+  const isLocalhost =
+    normalized.startsWith("http://localhost:") ||
+    normalized.startsWith("http://127.0.0.1:") ||
+    normalized.startsWith("http://0.0.0.0:");
+
   return (
-    allowedOrigins.includes(origin) ||
-    (origin && origin.endsWith && origin.endsWith(".webshield.tech")) ||
-    origin === "https://webshield.tech" ||
-    origin === "https://www.webshield.tech"
+    normalizedAllowedOrigins.includes(normalized) ||
+    (normalized && normalized.endsWith && normalized.endsWith(".webshield.tech")) ||
+    normalized === "https://webshield.tech" ||
+    normalized === "https://www.webshield.tech" ||
+    isLocalhost
   );
 };
 
-// Custom CORS middleware
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  console.log(`[CORS Check] Origin: ${origin}`);
+const corsOptions = {
+  origin: (origin, callback) => {
+    console.log(`[CORS Check] Origin: ${origin}`);
+    if (!origin) return callback(null, true);
+    if (allowAllCors) return callback(null, true);
+    if (isAllowedOrigin(origin)) return callback(null, true);
+    console.warn(`[CORS Blocked] Origin not allowed: ${origin}`);
+    return callback(new Error("Not allowed by CORS"));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "Cookie", "X-Requested-With"],
+};
 
-  if (isAllowedOrigin(origin) || allowAllCors) {
-    res.header("Access-Control-Allow-Origin", origin || "*");
-    res.header("Access-Control-Allow-Credentials", "true");
-    res.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
-    res.header("Access-Control-Allow-Headers", "Content-Type,Authorization,Cookie,X-Requested-With");
-    if (req.method === "OPTIONS") return res.sendStatus(200);
-    return next();
-  }
-
-  console.warn(`[CORS Blocked] Origin not allowed: ${origin}`);
-  return res.status(403).send("Not allowed by CORS");
-});
+app.use(cors(corsOptions));
+app.options("*path", cors(corsOptions));
 
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 app.use(cookieParser());
+app.use(injectionDetector);
 
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -126,11 +158,14 @@ const server = app.listen(port, () => {
   console.log(`CORS allow all: ${allowAllCors ? "enabled" : "disabled"}`);
 });
 
-process.on("SIGTERM", async () => {
-  console.log("SIGTERM signal received: closing HTTP server");
+const gracefulShutdown = async (signal) => {
+  console.log(`${signal} signal received: closing HTTP server`);
   await killAllProcesses();
   server.close(() => {
     console.log("HTTP server closed");
     process.exit(0);
   });
-});
+};
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT",  () => gracefulShutdown("SIGINT"));

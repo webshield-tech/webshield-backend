@@ -3,30 +3,19 @@ import {
   loginValidation,
   signUpValidation,
 } from "../utils/validations/user-validation.js";
-import { checkUser, addUser, firebaseLogin, verifyEmail, resendVerificationCode } from "../controllers/users-controller.js";
+import { checkUser, addUser, firebaseLogin, verifyEmail, resendVerificationCode, getCookieOptions } from "../controllers/users-controller.js";
 import { checkAuth } from "../middlewares/user-auth.js";
 import { User } from "../models/users-mongoose.js";
 import dotenv from "dotenv";
 import { loginLimiter } from "../middlewares/rate-limiter.js";
+import { ensureDailyScanReset } from "../utils/daily-scan-reset.js";
 dotenv.config();
 
 
 
 const userRouter = express.Router();
 
-function getCookieOptions() {
-  const isProduction = process.env.NODE_ENV === "production";
-  
-  return {
-    httpOnly: true,
-    secure: true, // Always true for cross-site cookies
-    sameSite: "none", // Must be "none" for cross-site
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-    path: "/",
-    // If you have a custom domain, uncomment the next line
-    // domain: isProduction ? ".yourdomain.com" : undefined
-  };
-}
+// getCookieOptions is imported from users-controller (single source of truth)
 
 // SIGNUP ROUTE
 userRouter.post("/signup", signUpValidation, async (req, res) => {
@@ -125,6 +114,7 @@ userRouter.post("/resend-verification", resendVerificationCode);
 userRouter.get('/profile', checkAuth, async (req, res) => {
   try {
     const userId = req.userId;
+    await ensureDailyScanReset(userId);
     
     const user = await User.findById(userId).select('-password');
     

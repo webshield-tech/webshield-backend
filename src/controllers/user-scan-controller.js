@@ -1,6 +1,8 @@
 import axios from "axios";
 import https from "https";
 import { randomUUID } from "crypto";
+import path from "path";
+import fs from "fs";
 import { exec } from "child_process";
 import util from "util";
 import dns from "dns/promises";
@@ -17,12 +19,83 @@ import { urlValidation } from "../utils/validations/url-validation.js";
 import { detectPlatform } from "../utils/platform-detector.js";
 import { extractReconData } from "../utils/reconDataExtractor.js";
 import { decideScanPlan } from "../utils/scanDecisionEngine.js";
+import { ensureDailyScanReset } from "../utils/daily-scan-reset.js";
 
 const execPromise = util.promisify(exec);
 
-const ALLOWED_SCANS = ["nmap", "nikto", "ssl", "sqlmap", "gobuster", "ratelimit", "ffuf", "wapiti", "nuclei", "dns", "whois"];
+const ALLOWED_SCANS = ["nmap", "nikto", "ssl", "sqlmap", "gobuster", "ratelimit", "ffuf", "wapiti", "nuclei", "dns", "whois", "xss"];
 const DAILY_PER_TOOL_LIMIT = 10;
 const DAILY_AUTO_LIMIT = 5;
+
+async function checkBinaryAvailable(binaryName) {
+  try {
+    await execPromise(`command -v ${binaryName}`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function computeToolAvailability() {
+  const byTool = {};
+
+  const binaryChecks = {
+    nmap: "nmap",
+    nikto: "nikto",
+    sqlmap: "sqlmap",
+    sslscan: "sslscan",
+    gobuster: "gobuster",
+    ffuf: "ffuf",
+    wapiti: "wapiti",
+    nuclei: "nuclei",
+    whois: "whois",
+  };
+
+  for (const [tool, bin] of Object.entries(binaryChecks)) {
+    byTool[tool] = await checkBinaryAvailable(bin);
+  }
+
+  // Alias for scanType "ssl" used in auto scans
+  byTool.ssl = byTool.sslscan === true;
+
+  const nodeAvailable = await checkBinaryAvailable("node");
+  const scriptChecks = {
+    ratelimit: path.join(process.cwd(), "src", "utils", "ratelimit-test.js"),
+    dns: path.join(process.cwd(), "src", "utils", "dns-verify.js"),
+    xss: path.join(process.cwd(), "src", "utils", "xss-csrf-scanner.js"),
+  };
+
+  for (const [tool, scriptPath] of Object.entries(scriptChecks)) {
+    byTool[tool] = nodeAvailable && fs.existsSync(scriptPath);
+  }
+
+  const available = Object.entries(byTool)
+    .filter(([, ok]) => ok)
+    .map(([tool]) => tool);
+  const missing = Object.entries(byTool)
+    .filter(([, ok]) => !ok)
+    .map(([tool]) => tool);
+
+  return { byTool, available, missing };
+}
+
+export async function getToolAvailability(req, res) {
+  try {
+    const { byTool, available, missing } = await computeToolAvailability();
+
+    return res.json({
+      success: true,
+      availability: {
+        byTool,
+        available,
+        missing,
+      },
+    });
+  } catch (error) {
+    console.error("[getToolAvailability] Error:", error);
+    return res.status(500).json({ success: false, error: "Failed to check tool availability" });
+  }
+}
 
 /**
  * MANUAL PING CHECK: Endpoint to let user check if target is alive
@@ -545,71 +618,92 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
     };
   }
 
-
+  if (scanType === "xss") {
+    const scriptPath = path.join(process.cwd(), "src", "utils", "xss-csrf-scanner.js");
+    return {
+      executable: "node",
+      args: [scriptPath, finalUrl],
+      opts: { timeoutMs: 180000, maxRaw: 300000 },
+    };
+  }
 
   throw new Error("Unsupported scan type");
 }
 
-function launchScanInBackground(scanId, finalUrl, scanType, cookies = "", scanMode = "quick", sqlmapUrl = "") {
-  return new Promise(async (resolve) => {
+async function launchScanInBackground(scanId, finalUrl, scanType, cookies = "", scanMode = "quick", sqlmapUrl = "") {
+  try {
+    if (hasProcess(scanId)) {
+      return { success: false, error: "Already running" };
+    }
+
+    console.log(`[SCAN_SERVICE] Starting ${scanType} scan (Mode: ${scanMode}) for: ${finalUrl} (ID: ${scanId})`);
+
+    // ROBUST PLATFORM DETECTION
     try {
-      if (hasProcess(scanId)) {
-        return resolve({ success: false, error: "Already running" });
-      }
+      const detection = await detectPlatform(finalUrl);
+      const platformResult = `${detection.platform} (${detection.os})`;
+      await Scan.findByIdAndUpdate(scanId, {
+        platform: platformResult,
+        "results.serverInfo": detection.server,
+        "results.techStack": detection.tech,
+        "results.platformDetection": detection
+      });
+    } catch (e) {
+      console.warn("[SCAN_SERVICE] Platform detection failed:", e.message);
+    }
 
-      console.log(`[SCAN_SERVICE] Starting ${scanType} scan (Mode: ${scanMode}) for: ${finalUrl} (ID: ${scanId})`);
+    const command = await getScanCommand(scanType, finalUrl, cookies, scanMode, sqlmapUrl);
+    if (command?.opts) command.opts.scanType = scanType;
 
-      // ROBUST PLATFORM DETECTION
-      try {
-        const detection = await detectPlatform(finalUrl);
-        const platformResult = `${detection.platform} (${detection.os})`;
-        await Scan.findByIdAndUpdate(scanId, { 
-          platform: platformResult,
-          "results.serverInfo": detection.server,
-          "results.techStack": detection.tech,
-          "results.platformDetection": detection
-        });
-      } catch (e) {
-        console.warn("[SCAN_SERVICE] Platform detection failed:", e.message);
-      }
-
-      const command = await getScanCommand(scanType, finalUrl, cookies, scanMode, sqlmapUrl);
-      
+    return new Promise((resolve) => {
       command.opts.onComplete = (id, status, parsed) => {
         resolve({ success: status === "completed", status, parsed });
       };
 
-      const started = await startProcess(
-        scanId,
-        command.executable,
-        command.args,
-        command.opts
-      );
-
-      if (!started.started) {
-        throw new Error(started.error || "Failed to start scan process");
-      }
-    } catch (error) {
-      console.error("[SCAN_SERVICE] Runtime error:", error?.message || error);
+      startProcess(scanId, command.executable, command.args, command.opts)
+        .then((started) => {
+          if (!started.started) {
+            throw new Error(started.error || "Failed to start scan process");
+          }
+        })
+        .catch(async (error) => {
+          console.error("[SCAN_SERVICE] Runtime error:", error?.message || error);
+          const existingScan = await Scan.findById(scanId).lean();
+          const mergedResults = {
+            ...(existingScan?.results || {}),
+            error: error?.message || "Scan failed to start"
+          };
+          await Scan.findByIdAndUpdate(scanId, {
+            status: "failed",
+            results: mergedResults,
+            updatedAt: new Date(),
+            completedAt: new Date(),
+          });
+          await refundFailedScanQuota(scanId);
+          resolve({ success: false, error: error?.message });
+        });
+    });
+  } catch (error) {
+    console.error("[SCAN_SERVICE] Critical error:", error?.message || error);
+    try {
       const existingScan = await Scan.findById(scanId).lean();
-      const mergedResults = {
-        ...(existingScan?.results || {}),
-        error: error?.message || "Scan failed to start"
-      };
-
       await Scan.findByIdAndUpdate(scanId, {
         status: "failed",
-        results: mergedResults,
+        results: { ...(existingScan?.results || {}), error: error?.message || "Scan failed" },
         updatedAt: new Date(),
         completedAt: new Date(),
       });
       await refundFailedScanQuota(scanId);
-      resolve({ success: false, error: error?.message });
+    } catch (dbErr) {
+      console.error("[SCAN_SERVICE] DB cleanup error:", dbErr);
     }
-  });
+    return { success: false, error: error?.message };
+  }
 }
 
 async function getTodayScanStats(userId) {
+  await ensureDailyScanReset(userId);
+
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
 
@@ -622,7 +716,7 @@ async function getTodayScanStats(userId) {
 
   const byTool = { 
     nmap: 0, nikto: 0, ssl: 0, sqlmap: 0, gobuster: 0, 
-    ratelimit: 0, ffuf: 0, wapiti: 0, nuclei: 0, dns: 0, whois: 0 
+    ratelimit: 0, ffuf: 0, wapiti: 0, nuclei: 0, dns: 0, whois: 0, xss: 0
   };
   const autoBatchIds = new Set();
 
@@ -638,16 +732,21 @@ async function getTodayScanStats(userId) {
     }
   }
 
-  const singleUsed = byTool.nmap + byTool.nikto + byTool.ssl + byTool.sqlmap;
+  // Sum ALL tools (not just the original 4)
+  const singleUsed = Object.values(byTool).reduce((a, b) => a + b, 0);
+  const totalUsed = singleUsed + autoBatchIds.size;
   return {
     byTool,
     autoUsed: autoBatchIds.size,
     singleUsed,
+    totalUsed,
     singleLimit: DAILY_PER_TOOL_LIMIT * ALLOWED_SCANS.length,
   };
 }
 
 async function checkScanQuota(userId, scanType) {
+  await ensureDailyScanReset(userId);
+
   const user = await User.findById(userId)
     .select("scanLimit usedScan")
     .lean();
@@ -657,6 +756,17 @@ async function checkScanQuota(userId, scanType) {
   }
 
   const stats = await getTodayScanStats(userId);
+  const dailyLimit = Number(user.scanLimit || 0);
+  const atTotalLimit = dailyLimit > 0 && stats.totalUsed >= dailyLimit;
+
+  if (atTotalLimit) {
+    return {
+      ok: false,
+      code: 403,
+      error: `Daily scan limit reached (${dailyLimit}/${dailyLimit}).`,
+      quota: { ...stats, dailyLimit },
+    };
+  }
 
   if (scanType === "all") {
     if (stats.autoUsed >= DAILY_AUTO_LIMIT) {
@@ -664,10 +774,10 @@ async function checkScanQuota(userId, scanType) {
         ok: false,
         code: 403,
         error: `Daily Auto Full Scan limit reached (${DAILY_AUTO_LIMIT}/${DAILY_AUTO_LIMIT}).`,
-        quota: stats,
+        quota: { ...stats, dailyLimit },
       };
     }
-    return { ok: true, quota: stats };
+    return { ok: true, quota: { ...stats, dailyLimit } };
   } else {
     const usedForTool = Number(stats.byTool[scanType] || 0);
     if (usedForTool >= DAILY_PER_TOOL_LIMIT) {
@@ -675,10 +785,10 @@ async function checkScanQuota(userId, scanType) {
         ok: false,
         code: 403,
         error: `Daily ${scanType.toUpperCase()} limit reached (${DAILY_PER_TOOL_LIMIT}/${DAILY_PER_TOOL_LIMIT}).`,
-        quota: stats,
+        quota: { ...stats, dailyLimit },
       };
     }
-    return { ok: true, quota: stats };
+    return { ok: true, quota: { ...stats, dailyLimit } };
   }
 }
 
@@ -886,8 +996,27 @@ export async function startScan(req, res) {
       
       // 1. SMART SCAN INTELLIGENCE LAYER: Run lightweight recon
       let reconData;
+      const providedDetection = req.body?.options?.detectionData;
       try {
-        reconData = await extractReconData(finalUrl);
+        if (providedDetection && typeof providedDetection === "object") {
+          reconData = {
+            hasLoginForm: Boolean(providedDetection.hasLoginForm),
+            hasInputForms: Boolean(providedDetection.hasInputForms),
+            hasSSL: Boolean(providedDetection.hasSSL),
+            platform: providedDetection.platform || null,
+            technologies: Array.isArray(providedDetection.technologies) ? [...providedDetection.technologies] : [],
+            openPorts: Array.isArray(providedDetection.openPorts) ? [...providedDetection.openPorts] : [],
+            isAlive: Boolean(providedDetection.isAlive),
+            isStaticFrontend: Boolean(providedDetection.isStaticFrontend),
+            evidence: {
+              headers: providedDetection.evidence?.headers || {},
+              htmlIndicators: Array.isArray(providedDetection.evidence?.htmlIndicators) ? [...providedDetection.evidence.htmlIndicators] : [],
+              formCount: Number(providedDetection.evidence?.formCount || 0),
+            },
+          };
+        } else {
+          reconData = await extractReconData(finalUrl);
+        }
       } catch (reconError) {
         console.warn("[SCAN_ORCHESTRATOR] Recon failed, falling back:", reconError?.message || reconError);
         reconData = { isAlive: false, openPorts: [], evidence: { htmlIndicators: [] } };
@@ -896,10 +1025,41 @@ export async function startScan(req, res) {
       // 2. Generate Scan Plan based on recon.
       // Auto-scan should use the full smart sequence on normal websites, while
       // frontend-only targets are trimmed to the frontend-safe toolset.
-      const scanPlan = decideScanPlan(reconData, "deep");
+      const decisionMode = scanMode === "full" ? "deep" : scanMode;
+      const executionPlan = decideScanPlan(reconData, decisionMode || "quick");
+      const availability = await computeToolAvailability();
+      const availableRun = executionPlan.run.filter((tool) => availability.byTool[tool] !== false);
+      const missingRun = executionPlan.run.filter((tool) => availability.byTool[tool] === false);
+      const mergedSkip = Array.from(new Set([...(executionPlan.skip || []), ...missingRun]));
+      const planDetails = { ...executionPlan.details };
+
+      for (const tool of missingRun) {
+        planDetails[tool] = {
+          decision: "skip",
+          reason: "Tool unavailable on server",
+          confidence: 1,
+          evidence: ["Binary or script missing"],
+        };
+      }
+
+      const scanPlan = {
+        run: ["platform", ...availableRun],
+        skip: mergedSkip,
+        details: {
+          platform: {
+            decision: "run",
+            reason: reconData.isAlive
+              ? "Detect website type before the security tools run"
+              : "Host was not confirmed reachable, so the fallback scan plan is used",
+            confidence: 1,
+            evidence: reconData.evidence?.htmlIndicators || [],
+          },
+          ...planDetails,
+        },
+      };
       
       // We only insert documents for the tools we decided to RUN
-      const scanDocs = scanPlan.run.map((tool) => ({
+      const scanDocs = availableRun.map((tool) => ({
         userId,
         targetUrl: finalUrl,
         scanType: tool,
@@ -919,7 +1079,7 @@ export async function startScan(req, res) {
       const createdScans = await Scan.insertMany(scanDocs);
       
       await User.findByIdAndUpdate(userId, {
-        $set: { usedScan: quota.quota.singleUsed },
+        $inc: { usedScan: 1 },
       });
 
       res.status(201).json({
@@ -964,7 +1124,7 @@ export async function startScan(req, res) {
       return;
     }
 
-    const scanDoc = await Scan.create({
+      const scanDoc = await Scan.create({
       userId,
       targetUrl: finalUrl,
       scanType,
@@ -975,7 +1135,7 @@ export async function startScan(req, res) {
 
     const updatedUser = await User.findByIdAndUpdate(
       userId,
-      { $set: { usedScan: quota.quota.singleUsed + 1 } },
+      { $inc: { usedScan: 1 } },
       { new: true }
     )
       .select("usedScan scanLimit")
@@ -1091,6 +1251,38 @@ export async function cancelScan(req, res) {
       return res.json({ success: true, message: `Scan already ${scan.status}` });
     }
 
+    const batchId = scan?.results?.batchId;
+    if (batchId) {
+      const batchScans = await Scan.find({
+        userId,
+        "results.batchId": batchId,
+        status: { $in: ["pending", "running"] },
+      }).select("_id status");
+
+      let cancelledCount = 0;
+      for (const batchScan of batchScans) {
+        const killResult = await killProcess(String(batchScan._id), `Cancelled by user ${userId}`);
+        if (!killResult.killed) {
+          await Scan.findByIdAndUpdate(batchScan._id, {
+            status: "cancelled",
+            results: {
+              cancelled: true,
+              error: "Cancelled by user (no active process found)",
+            },
+            updatedAt: new Date(),
+            completedAt: new Date(),
+          });
+        }
+        cancelledCount += 1;
+      }
+
+      return res.json({
+        success: true,
+        message: `Cancelled ${cancelledCount} scan(s) in this batch`,
+        batchId,
+      });
+    }
+
     const result = await killProcess(scanId, `Cancelled by user ${userId}`);
     if (result.killed) {
       return res.json({ success: true, message: "Scan cancelled successfully" });
@@ -1200,5 +1392,133 @@ export async function getTodayStats(req, res) {
   } catch (error) {
     console.error("[getTodayStats] Error:", error);
     return res.status(500).json({ success: false, error: "Failed to fetch scan stats" });
+  }
+}
+
+/**
+ * Runs lightweight recon on the target and returns website type detection
+ * Used by the frontend to show what kind of website it is before scanning
+ */
+export async function detectWebsite(req, res) {
+  try {
+    const userId = getUserIdFromRequest(req);
+    if (!userId) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+    const { url } = req.body;
+    if (!url) return res.status(400).json({ success: false, error: "URL is required" });
+
+    const validation = urlValidation(url);
+    if (!validation.valid) return res.status(400).json({ success: false, error: validation.error });
+
+    const finalUrl = validation.url;
+    const { extractReconData } = await import("../utils/reconDataExtractor.js");
+    const { decideScanPlan } = await import("../utils/scanDecisionEngine.js");
+
+    let reconData;
+    try {
+      reconData = await extractReconData(finalUrl);
+    } catch (e) {
+      reconData = { isAlive: false, openPorts: [], evidence: { htmlIndicators: [] } };
+    }
+
+    const quickPlan = decideScanPlan(reconData, "quick");
+    const deepPlan  = decideScanPlan(reconData, "deep");
+
+    let siteType = "Unknown";
+    if (!reconData.isAlive) {
+      siteType = "Unreachable";
+    } else if (reconData.isStaticFrontend) {
+      siteType = "Frontend Only";
+    } else if (reconData.hasLoginForm || reconData.hasInputForms) {
+      siteType = "Full Stack (Backend + Forms Detected)";
+    } else {
+      siteType = "Web Server (No Forms Detected)";
+    }
+
+    return res.json({
+      success: true,
+      detection: {
+        isAlive: reconData.isAlive,
+        siteType,
+        hasSSL: reconData.hasSSL,
+        hasInputForms: reconData.hasInputForms,
+        hasLoginForm: reconData.hasLoginForm,
+        isStaticFrontend: reconData.isStaticFrontend,
+        platform: reconData.platform,
+        technologies: reconData.technologies,
+        evidence: reconData.evidence,
+      },
+      quickPlan: { run: quickPlan.run, skip: quickPlan.skip, details: quickPlan.details },
+      deepPlan:  { run: deepPlan.run,  skip: deepPlan.skip,  details: deepPlan.details },
+    });
+  } catch (error) {
+    console.error("[detectWebsite] Error:", error);
+    return res.status(500).json({ success: false, error: "Detection failed" });
+  }
+}
+
+/**
+ * Runs a DNS lookup synchronously and returns results inline (no scan pipeline)
+ * Used by the frontend DNS Lookup inline tool - no progress page needed
+ */
+export async function dnsLookupInline(req, res) {
+  try {
+    const userId = getUserIdFromRequest(req);
+    if (!userId) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+    const { hostname } = req.body;
+    if (!hostname || !hostname.trim()) {
+      return res.status(400).json({ success: false, error: "Hostname is required" });
+    }
+
+    const clean = hostname.trim().replace(/^https?:\/\//i, "").split("/")[0];
+
+    const scriptPath = path.join(process.cwd(), "src", "utils", "dns-verify.js");
+    try {
+      const { stdout } = await execPromise(`node ${JSON.stringify(scriptPath)} ${JSON.stringify(clean)}`, { timeout: 15000 });
+      // dns-verify.js outputs JSON.stringify(results)
+      let records = {};
+      const match = stdout.match(/\{[\s\S]+\}/);
+      if (match) {
+        try { records = JSON.parse(match[0]); } catch { records = { raw: stdout }; }
+      } else {
+        records = { raw: stdout };
+      }
+      return res.json({ success: true, hostname: clean, records });
+    } catch (execErr) {
+      return res.status(500).json({ success: false, error: `DNS lookup failed: ${execErr.message}` });
+    }
+  } catch (error) {
+    console.error("[dnsLookupInline] Error:", error);
+    return res.status(500).json({ success: false, error: "DNS lookup failed" });
+  }
+}
+
+/**
+ * Runs a WHOIS lookup synchronously and returns results inline
+ */
+export async function whoisLookupInline(req, res) {
+  try {
+    const userId = getUserIdFromRequest(req);
+    if (!userId) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+    const { hostname } = req.body;
+    if (!hostname || !hostname.trim()) {
+      return res.status(400).json({ success: false, error: "Hostname is required" });
+    }
+
+    const clean = hostname.trim().replace(/^https?:\/\//i, "").split("/")[0];
+    const domainParts = clean.split(".");
+    const baseDomain = domainParts.slice(-2).join(".");
+
+    try {
+      const { stdout } = await execPromise(`whois ${JSON.stringify(baseDomain)}`, { timeout: 15000 });
+      return res.json({ success: true, hostname: clean, baseDomain, data: stdout.slice(0, 6000) });
+    } catch (execErr) {
+      return res.status(500).json({ success: false, error: `WHOIS lookup failed: ${execErr.message}` });
+    }
+  } catch (error) {
+    console.error("[whoisLookupInline] Error:", error);
+    return res.status(500).json({ success: false, error: "WHOIS lookup failed" });
   }
 }

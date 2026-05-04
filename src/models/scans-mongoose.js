@@ -25,6 +25,7 @@ const scanSchema = new mongoose.Schema(
         "nuclei",
         "dns",
         "whois",
+        "xss",
       ],
       default: "nikto",
     },

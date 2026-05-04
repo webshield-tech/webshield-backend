@@ -16,6 +16,6 @@ notificationRouter.post("/read-all", checkAuth, markAllNotificationsRead);
 notificationRouter.delete("/:notificationId", checkAuth, deleteNotification);
 
 // Admin endpoints (require admin auth)
-notificationRouter.post("/announce", checkAdmin, sendAnnouncement);
+notificationRouter.post("/announce", checkAuth, checkAdmin, sendAnnouncement);
 
 export default notificationRouter;

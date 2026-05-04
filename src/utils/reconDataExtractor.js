@@ -70,22 +70,26 @@ export async function extractReconData(targetUrl) {
     const xPoweredBy = (headers['x-powered-by'] || '').toLowerCase();
     const bodyStr = response.data.toLowerCase();
     
-    if (
+    // Static/JAMstack detection - requires a REAL platform signature (not just id="root")
+    // id="root" and id="app" are used by every React/Vue app, including full-stack ones with a backend
+    const hasPlatformSignature = (
       serverHeader.includes('vercel') ||
       serverHeader.includes('netlify') ||
       serverHeader.includes('github.io') ||
-      serverHeader.includes('firebase') ||
-      serverHeader.includes('cloudflare') ||
-      xPoweredBy.includes('next.js') ||
       xPoweredBy.includes('gatsby') ||
       bodyStr.includes('__next_data__') ||
-      bodyStr.includes('__nuxt') ||
-      bodyStr.includes('data-reactroot') ||
-      bodyStr.includes('id="app"') ||
-      bodyStr.includes('id="root"')
-    ) {
+      bodyStr.includes('__nuxt')
+    );
+    
+    // Only call it static if the hosting platform CONFIRMS it's a static deploy
+    // AND there are no forms/inputs (which would indicate a backend exists)
+    if (hasPlatformSignature && !reconData.hasInputForms) {
       reconData.isStaticFrontend = true;
-      reconData.evidence.htmlIndicators.push('Static JAMstack/Frontend signature detected');
+      reconData.evidence.htmlIndicators.push('Static JAMstack/Frontend confirmed by platform signature');
+    } else if (hasPlatformSignature && reconData.hasInputForms) {
+      // Platform signature found but forms exist — could be static with embedded forms (e.g. Netlify Forms)
+      // Don't mark as static to ensure we test the forms
+      reconData.evidence.htmlIndicators.push('JAMstack platform detected but forms found — treating as dynamic');
     }
 
     // Detect CMS

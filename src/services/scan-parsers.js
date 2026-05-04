@@ -441,7 +441,25 @@ export function parseSsl(rawOutput = "", target = "") {
     domain: target,
   };
 }
-export function parseByTool(executable, rawOutput, target) {
+export function parseByTool(executable, rawOutput, target, scanType = "") {
+  const normalizedType = String(scanType || "").toLowerCase();
+  const mappedType = normalizedType === "sslscan" ? "ssl" : normalizedType;
+
+  if (mappedType) {
+    if (mappedType === "nmap") return parseNmap(rawOutput, target);
+    if (mappedType === "nikto") return parseNikto(rawOutput, target);
+    if (mappedType === "sqlmap") return parseSqlmap(rawOutput, target);
+    if (mappedType === "ssl") return parseSsl(rawOutput, target);
+    if (mappedType === "gobuster") return parseGobuster(rawOutput, target);
+    if (mappedType === "ratelimit") return parseRateLimit(rawOutput, target);
+    if (mappedType === "ffuf") return parseFfuf(rawOutput, target);
+    if (mappedType === "wapiti") return parseWapiti(rawOutput, target);
+    if (mappedType === "nuclei") return parseNuclei(rawOutput, target);
+    if (mappedType === "dns") return parseDns(rawOutput, target);
+    if (mappedType === "whois") return parseWhois(rawOutput, target);
+    if (mappedType === "xss") return parseXss(rawOutput, target);
+  }
+
   // Map common executable names to parser
   const bin = (executable || "").toLowerCase();
   if (bin.includes("nmap")) return parseNmap(rawOutput, target);
@@ -456,6 +474,7 @@ export function parseByTool(executable, rawOutput, target) {
   if (bin.includes("nuclei")) return parseNuclei(rawOutput, target);
   if (bin.includes("dns")) return parseDns(rawOutput, target);
   if (bin.includes("whois")) return parseWhois(rawOutput, target);
+  if (bin.includes("xss") || bin.includes("xss-csrf")) return parseXss(rawOutput, target);
 
   // Default: return raw output only
   return {
@@ -468,21 +487,35 @@ export function parseByTool(executable, rawOutput, target) {
 export function parseGobuster(rawOutput = "", target = "") {
   const out = rawOutput || "";
   const lines = out.split("\n").map(l => l.trim()).filter(Boolean);
-  const found = [];
-  
+  const directories = [];
+  const protectedPaths = [];
+
   for (const line of lines) {
-    if (line.includes("(Status: 200)") || line.includes("(Status: 301)") || line.includes("(Status: 302)")) {
-      found.push(line);
+    // Parse status code from gobuster output format: /path  (Status: 200) [Size: 1234]
+    const match = line.match(/(\/[^\s]+).*\(Status:\s*(\d+)\)/);
+    if (!match) continue;
+    const [, dirPath, code] = match;
+    const status = parseInt(code, 10);
+    if ([200, 301, 302].includes(status)) {
+      directories.push({ path: dirPath, status });
+    } else if ([403, 401].includes(status)) {
+      protectedPaths.push({ path: dirPath, status, note: status === 403 ? "Forbidden (sensitive/protected path)" : "Authentication required" });
     }
   }
 
+  const success = directories.length > 0 || protectedPaths.length > 0;
   return {
     tool: "gobuster",
-    success: found.length > 0,
-    directories: found,
-    count: found.length,
+    success,
+    directories,
+    protectedPaths,
+    count: directories.length,
+    total: directories.length + protectedPaths.length,
+    summary: success
+      ? `Found ${directories.length} accessible and ${protectedPaths.length} protected path(s) on ${target}`
+      : `No directories discovered on ${target}`,
     rawOutput: out,
-    target
+    target,
   };
 }
 
@@ -526,24 +559,83 @@ export function parseRateLimit(rawOutput = "", target = "") {
 
 export function parseFfuf(rawOutput = "", target = "") {
   const lines = rawOutput.split("\n");
-  const findings = lines.filter(l => l.includes("[Status: 200") || l.includes("[Status: 301"));
+  const findings = [];
+  const protectedPaths = [];
+
+  for (const line of lines) {
+    const statusMatch = line.match(/\[Status:\s*(\d+)/);
+    if (!statusMatch) continue;
+    const status = parseInt(statusMatch[1], 10);
+    const wordMatch = line.match(/\*\s*FUZZ:\s*(.+?)\s*\[/);
+    const word = wordMatch ? wordMatch[1].trim() : line.trim();
+    if ([200, 301, 302].includes(status)) {
+      findings.push({ path: word, status });
+    } else if ([403, 401].includes(status)) {
+      protectedPaths.push({ path: word, status, note: "Protected resource" });
+    }
+  }
+
+  const success = findings.length > 0 || protectedPaths.length > 0;
   return {
     tool: "ffuf",
-    success: findings.length > 0,
+    success,
     findings,
+    protectedPaths,
     count: findings.length,
+    total: findings.length + protectedPaths.length,
+    summary: success
+      ? `FFUF found ${findings.length} endpoint(s) and ${protectedPaths.length} protected path(s) on ${target}`
+      : `No endpoints found on ${target}`,
     rawOutput,
-    target
+    target,
   };
 }
 
 export function parseWapiti(rawOutput = "", target = "") {
+  const vulnerabilities = [];
+  let parsed = null;
+
+  // Wapiti can output structured JSON when invoked with -f json
+  try {
+    const jsonMatch = rawOutput.match(/\{[\s\S]+\}/);
+    if (jsonMatch) parsed = JSON.parse(jsonMatch[0]);
+  } catch { /* not JSON mode, fall back to text parsing */ }
+
+  if (parsed?.vulnerabilities) {
+    for (const [type, items] of Object.entries(parsed.vulnerabilities)) {
+      if (Array.isArray(items) && items.length > 0) {
+        for (const item of items) {
+          vulnerabilities.push({
+            type,
+            path: item.path || item.url || "unknown",
+            method: item.method || "GET",
+            info: item.info || "",
+            level: item.level ?? 1,
+          });
+        }
+      }
+    }
+  } else {
+    // Fallback plain-text: look for [+] vulnerability sections
+    const vulnMatches = rawOutput.matchAll(/\[\+\]\s+([^\n]+)/g);
+    for (const m of vulnMatches) {
+      if (!m[1].toLowerCase().includes('no vulnerability')) {
+        vulnerabilities.push({ type: m[1].trim(), info: m[1].trim() });
+      }
+    }
+  }
+
+  const success = vulnerabilities.length > 0;
   return {
     tool: "wapiti",
-    success: rawOutput.includes("Vulnerabilities found"),
-    summary: rawOutput.includes("Vulnerabilities found") ? "Web vulnerabilities detected by Wapiti" : "No obvious web vulnerabilities found",
+    success,
+    vulnerabilities,
+    total: vulnerabilities.length,
+    summary: success
+      ? `Wapiti found ${vulnerabilities.length} vulnerability type(s) on ${target}`
+      : `Wapiti completed — no web vulnerabilities detected on ${target}`,
     rawOutput,
-    target
+    target,
   };
 }
 
@@ -580,13 +672,35 @@ export function parseDns(rawOutput = "", target = "") {
   }
 }
 
-export function parseWhois(rawOutput = "", target = "") {
+export function parseXss(rawOutput = "", target = "") {
+  const xssFindings = [];
+  const csrfFindings = [];
+
+  for (const line of rawOutput.split("\n")) {
+    const t = line.trim();
+    if (t.startsWith("XSS_FOUND:")) {
+      try { xssFindings.push(JSON.parse(t.slice(10))); } catch { xssFindings.push({ raw: t }); }
+    } else if (t.startsWith("CSRF_FOUND:")) {
+      try { csrfFindings.push(JSON.parse(t.slice(11))); } catch { csrfFindings.push({ raw: t }); }
+    }
+  }
+
+  const xssVulnerable = rawOutput.includes("RESULT: XSS_VULNERABLE") || xssFindings.length > 0;
+  const csrfVulnerable = rawOutput.includes("RESULT: CSRF_VULNERABLE") || csrfFindings.length > 0;
+  const success = xssVulnerable || csrfVulnerable;
+
   return {
-    tool: "whois",
-    success: rawOutput.length > 0,
-    data: rawOutput,
+    tool: "xss",
+    success,
+    xssVulnerable,
+    csrfVulnerable,
+    xssFindings,
+    csrfFindings,
+    total: xssFindings.length + csrfFindings.length,
+    summary: success
+      ? `XSS/CSRF scanner detected issues on ${target}: XSS=${xssVulnerable ? 'VULNERABLE' : 'Safe'}, CSRF=${csrfVulnerable ? 'VULNERABLE' : 'Safe'}`
+      : `XSS/CSRF scanner completed — no injection or CSRF vulnerabilities found on ${target}`,
     rawOutput,
-    target
+    target,
   };
 }
-

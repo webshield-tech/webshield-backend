@@ -1,12 +1,21 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import Groq from 'groq-sdk';
 import dotenv from 'dotenv';
 dotenv.config();
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API);
+let groqClient = null;
+if (process.env.GROQ_API_KEY) {
+  try {
+    groqClient = new Groq({ apiKey: process.env.GROQ_API_KEY });
+  } catch (e) {
+    console.warn("Groq initialization failed:", e.message);
+  }
+}
+
 const GEMINI_MODEL_CANDIDATES = [
   process.env.GEMINI_MODEL,
   'gemini-2.5-flash',
-  'gemini-flash-latest',
   'gemini-1.5-flash',
 ].filter(Boolean);
 
@@ -71,7 +80,19 @@ async function runGeminiWithFallback(actionFactory, contextLabel) {
     }
   }
 
-  throw lastError || new Error('No Gemini model could be initialized');
+  // Fallback to Groq if all Gemini models fail and Groq is available
+  if (groqClient) {
+    console.warn(`[${contextLabel}] Gemini failed or quota exceeded. Falling back to Groq.`);
+    try {
+      // Return a special flag so the caller knows to use Groq manually, or handle the Groq call here.
+      // Since Groq SDK has a different API, we throw a specific error to let the caller handle it.
+      throw new Error('FALLBACK_TO_GROQ');
+    } catch (e) {
+      throw e;
+    }
+  }
+
+  throw lastError || new Error('No AI model could be initialized');
 }
 
 async function withGeminiRetry(action, contextLabel) {
@@ -127,21 +148,19 @@ function buildFallbackAnalysis(scanInputData) {
 export async function analyzeVulnerabilities(scanInputData, language = 'english') {
   const normalizedLanguage = normalizeLanguage(language);
 
-  const systemPrompt = `You are a senior penetration tester, cybersecurity analyst, and vulnerability management engine for Vuln Spectra (WebShield).
-Your role is to analyze combined scan results from multiple security tools and produce a professional, structured JSON vulnerability assessment.
+const systemPrompt = `You are a friendly, expert cybersecurity consultant for Vuln Spectra (WebShield).
+Your role is to analyze scan results and explain them to a NON-TECHNICAL website owner. 
 
-CORE RULES & CORRELATION LOGIC:
-1. Identify REAL vulnerabilities only. Eliminate false positives.
-2. DO NOT treat open standard ports (e.g., 80, 443) as vulnerabilities. Mark them Informational.
-3. Merge duplicate findings: If multiple tools report the same issue, combine them into one finding.
-4. Scale Confidence: 
-   - If multiple tools confirm (e.g., SQLMap + Nuclei), increase confidence and list in detection_sources.
-   - If weak evidence or single tool (e.g., Nikto version inference), reduce severity/confidence.
+CORE RULES:
+1. Explain risks in plain English without using complex jargon. Avoid overly technical language.
+2. Identify REAL vulnerabilities only. Do not treat standard open ports (80, 443) as flaws.
+3. Merge duplicate findings.
+4. Scale Confidence based on multiple tool detections.
 5. Provide a realistic risk score (0-100).
 6. Output MUST be in ${normalizedLanguage}.
-7. Use simple wording that a non-technical website owner can understand.
+7. For each finding, provide clear, step-by-step 'patch_steps' that a regular developer or host provider can follow.
 8. Add a short, platform-specific fix in platform_specific_fix when the detected platform is known.
-9. If the target is safe or only shows expected ports, say so clearly.
+9. If the target is safe or only shows expected ports, say so clearly in the key_message.
 
 OUTPUT FORMAT — STRICT JSON ONLY:
 {
@@ -170,7 +189,8 @@ OUTPUT FORMAT — STRICT JSON ONLY:
       "impact": "<Attacker capability>",
       "evidence": "<Proof>",
       "affected_area": "<URL/port>",
-      "recommendation": "<Fix>",
+      "recommendation": "<General Fix Advice>",
+      "patch_steps": ["<Step 1>", "<Step 2>"],
       "platform_specific_fix": "<Fix for detected platform in plain wording>",
       "references": ["<CVE/CWE>"]
     }
@@ -210,7 +230,27 @@ OUTPUT FORMAT — STRICT JSON ONLY:
 
     return parsed;
   } catch (error) {
-    console.error('[analyzeVulnerabilities] Gemini Error:', error?.message || error);
+    if (error.message === 'FALLBACK_TO_GROQ' && groqClient) {
+      try {
+        const payload = JSON.stringify(scanInputData);
+        const groqCompletion = await groqClient.chat.completions.create({
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: `Analyze this scan data:\n${payload}` }
+          ],
+          model: "llama3-8b-8192",
+          temperature: 0.2,
+          response_format: { type: "json_object" }
+        });
+        const responseText = groqCompletion.choices[0]?.message?.content || "{}";
+        const parsed = JSON.parse(stripJsonFences(responseText));
+        if (parsed.summary && parsed.findings) return parsed;
+      } catch (groqError) {
+        console.error('[analyzeVulnerabilities] Groq Error:', groqError?.message);
+      }
+    }
+
+    console.error('[analyzeVulnerabilities] AI Error:', error?.message || error);
     const fallback = buildFallbackAnalysis(scanInputData);
     fallback.summary.key_message = `AI analysis error: ${error?.message || 'Unknown error'}. Fallback data provided.`;
     return fallback;
@@ -252,8 +292,23 @@ ${summaryText}`;
     );
     return result.response.text();
   } catch (error) {
-    console.error('[aiReport] Gemini Error:', error?.message || error);
-    return `ERROR: Gemini AI analysis failed. Details: ${error?.message}\n\nRaw scan data:\n\n${summaryText}`;
+    if (error.message === 'FALLBACK_TO_GROQ' && groqClient) {
+      try {
+        const groqCompletion = await groqClient.chat.completions.create({
+          messages: [
+            { role: "system", content: prompt }
+          ],
+          model: "llama3-8b-8192",
+          temperature: 0.3,
+        });
+        return groqCompletion.choices[0]?.message?.content || "No analysis available.";
+      } catch (groqError) {
+        console.error('[aiReport] Groq Error:', groqError?.message);
+      }
+    }
+
+    console.error('[aiReport] AI Error:', error?.message || error);
+    return `ERROR: AI analysis failed. Details: ${error?.message}\n\nRaw scan data:\n\n${summaryText}`;
   }
 }
 
@@ -288,7 +343,23 @@ Return ONLY a valid JSON object with these exact keys:
     
     return JSON.parse(stripJsonFences(result.response.text()));
   } catch (error) {
-    console.error('[generatePoCExplanation] Gemini Error:', error?.message || error);
+    if (error.message === 'FALLBACK_TO_GROQ' && groqClient) {
+      try {
+        const groqCompletion = await groqClient.chat.completions.create({
+          messages: [
+            { role: "system", content: prompt }
+          ],
+          model: "llama3-8b-8192",
+          temperature: 0.3,
+          response_format: { type: "json_object" }
+        });
+        return JSON.parse(stripJsonFences(groqCompletion.choices[0]?.message?.content || "{}"));
+      } catch (groqError) {
+        console.error('[generatePoCExplanation] Groq Error:', groqError?.message);
+      }
+    }
+
+    console.error('[generatePoCExplanation] AI Error:', error?.message || error);
     return {
       what: `The system verified a security flaw: "${vulnTitle}".`,
       impact: 'An attacker could gain unauthorized access or extract sensitive data.',

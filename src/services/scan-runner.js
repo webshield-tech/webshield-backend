@@ -48,18 +48,19 @@ export async function startProcess(scanId, executable, args = [], opts = {}) {
       }
     }, logIntervalMs);
 
-  processes.set(scanId, {
-  child,
-  buffers,
-  timeoutTimer,
-  logInterval,
-  executable,
-  args,
-  maxPartial,
-  maxRaw,
-  timeoutMs,
-  logIntervalMs,
-});
+    processes.set(scanId, {
+      child,
+      buffers,
+      timeoutTimer,
+      logInterval,
+      executable,
+      args,
+      maxPartial,
+      maxRaw,
+      timeoutMs,
+      logIntervalMs,
+      scanType: opts?.scanType,
+    });
     child.stdout.on("data", (chunk) => {
       buffers.stdout += chunk.toString();
       if (buffers.stdout.length > maxRaw)
@@ -106,7 +107,7 @@ export async function startProcess(scanId, executable, args = [], opts = {}) {
         }
 
         const guessedTarget = procEntry?.args?.slice(-1)?.[0] || "";
-        const parsed = parseByTool(executable, out || err, guessedTarget);
+        const parsed = parseByTool(executable, out || err, guessedTarget, procEntry?.scanType);
 
         let status = "failed";
 

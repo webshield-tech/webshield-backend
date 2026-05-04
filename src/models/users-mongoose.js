@@ -34,6 +34,10 @@ const userSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    lastScanQuotaResetAt: {
+      type: Date,
+      default: null,
+    },
     agreedToTerms: { type: Boolean, default: false },
     termsAcceptedAt: { type: Date },
     termsAcceptedIP: { type: String },

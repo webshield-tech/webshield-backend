@@ -32,6 +32,7 @@ export async function createUser(user) {
       role: user.role || "user",
       scanLimit: user.scanLimit != null ? user.scanLimit : 15,
       usedScan: user.usedScan != null ? user.usedScan : 0,
+      lastScanQuotaResetAt: user.lastScanQuotaResetAt || new Date(),
       lastIp: user.lastIp,
       isVerified: user.isVerified || false,
       verificationCode: user.verificationCode,

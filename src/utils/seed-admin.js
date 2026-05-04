@@ -1,14 +1,22 @@
 import { User } from "../models/users-mongoose.js";
 import bcrypt from "bcrypt";
+import crypto from "crypto";
 
 export async function seedAdmin() {
   try {
     const adminEmail = "admin@fsociety.com";
-    const adminPassword = "Anonymous@payload!@#";
+    const configuredAdminPassword = process.env.ADMIN_SEED_PASSWORD;
+    const fallbackRandomPassword = crypto.randomBytes(24).toString("base64url");
+    const adminPassword = configuredAdminPassword || fallbackRandomPassword;
     
     const existingAdmin = await User.findOne({ email: adminEmail });
     
     if (!existingAdmin) {
+      if (!configuredAdminPassword) {
+        console.warn(
+          "[seed-admin] ADMIN_SEED_PASSWORD not set. Creating admin with a random password; set ADMIN_SEED_PASSWORD before first login."
+        );
+      }
       const hashedPassword = await bcrypt.hash(adminPassword, 10);
       await User.create({
         username: "fsociety_admin",
