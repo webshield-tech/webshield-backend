@@ -32,8 +32,9 @@ function getFirebaseCredential() {
 try {
   const credential = getFirebaseCredential();
   if (!credential) {
-    console.warn("⚠️ Firebase Admin credentials are not configured.");
-    console.warn("Set FIREBASE_SERVICE_ACCOUNT_JSON or GOOGLE_APPLICATION_CREDENTIALS to enable social login verification.");
+    // Initialize with a dummy project to prevent "app not initialized" errors in other parts of the system
+    admin.initializeApp({ projectId: "dummy-project" });
+    console.log("⚠️ Firebase running in mock mode (Social Login Disabled)");
   } else {
     admin.initializeApp({ credential });
     console.log("✅ Firebase Admin initialized successfully");
