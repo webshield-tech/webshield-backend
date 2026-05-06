@@ -23,7 +23,7 @@ import { ensureDailyScanReset } from "../utils/daily-scan-reset.js";
 
 const execPromise = util.promisify(exec);
 
-const ALLOWED_SCANS = ["nmap", "nikto", "ssl", "sqlmap", "gobuster", "ratelimit", "ffuf", "wapiti", "nuclei", "dns", "whois", "xss"];
+const ALLOWED_SCANS = ["nmap", "nikto", "ssl", "sqlmap", "gobuster", "ratelimit", "ffuf", "wapiti", "nuclei", "dns", "whois"];
 const DAILY_PER_TOOL_LIMIT = 10;
 const DAILY_AUTO_LIMIT = 5;
 
@@ -62,7 +62,6 @@ async function computeToolAvailability() {
   const scriptChecks = {
     ratelimit: path.join(process.cwd(), "src", "utils", "ratelimit-test.js"),
     dns: path.join(process.cwd(), "src", "utils", "dns-verify.js"),
-    xss: path.join(process.cwd(), "src", "utils", "xss-csrf-scanner.js"),
   };
 
   for (const [tool, scriptPath] of Object.entries(scriptChecks)) {
@@ -618,15 +617,6 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
     };
   }
 
-  if (scanType === "xss") {
-    const scriptPath = path.join(process.cwd(), "src", "utils", "xss-csrf-scanner.js");
-    return {
-      executable: "node",
-      args: [scriptPath, finalUrl],
-      opts: { timeoutMs: 180000, maxRaw: 300000 },
-    };
-  }
-
   throw new Error("Unsupported scan type");
 }
 
@@ -716,7 +706,7 @@ async function getTodayScanStats(userId) {
 
   const byTool = { 
     nmap: 0, nikto: 0, ssl: 0, sqlmap: 0, gobuster: 0, 
-    ratelimit: 0, ffuf: 0, wapiti: 0, nuclei: 0, dns: 0, whois: 0, xss: 0
+    ratelimit: 0, ffuf: 0, wapiti: 0, nuclei: 0, dns: 0, whois: 0
   };
   const autoBatchIds = new Set();
 

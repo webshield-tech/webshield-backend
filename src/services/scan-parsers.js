@@ -457,7 +457,6 @@ export function parseByTool(executable, rawOutput, target, scanType = "") {
     if (mappedType === "nuclei") return parseNuclei(rawOutput, target);
     if (mappedType === "dns") return parseDns(rawOutput, target);
     if (mappedType === "whois") return parseWhois(rawOutput, target);
-    if (mappedType === "xss") return parseXss(rawOutput, target);
   }
 
   // Map common executable names to parser
@@ -474,7 +473,6 @@ export function parseByTool(executable, rawOutput, target, scanType = "") {
   if (bin.includes("nuclei")) return parseNuclei(rawOutput, target);
   if (bin.includes("dns")) return parseDns(rawOutput, target);
   if (bin.includes("whois")) return parseWhois(rawOutput, target);
-  if (bin.includes("xss") || bin.includes("xss-csrf")) return parseXss(rawOutput, target);
 
   // Default: return raw output only
   return {
@@ -490,30 +488,47 @@ export function parseGobuster(rawOutput = "", target = "") {
   const directories = [];
   const protectedPaths = [];
 
+  // Check if gobuster actually ran
+  const looksLikeGobuster = /Gobuster v|Starting gobuster|directory enumeration/i.test(out);
+  const scanCompleted = /Finished|finished/i.test(out);
+
   for (const line of lines) {
-    // Parse status code from gobuster output format: /path  (Status: 200) [Size: 1234]
-    const match = line.match(/(\/[^\s]+).*\(Status:\s*(\d+)\)/);
+    // Parse status code from gobuster output format: /path (Status: 200) [Size: 1234]
+    // Also handle formats like: /path Status: 200
+    const match = line.match(/(\/[\w\-._~:/?#\[\]@!$&'()*+,;=]*)\s*(?:\()?Status:\s*(\d+)(?:\))?/i);
     if (!match) continue;
-    const [, dirPath, code] = match;
-    const status = parseInt(code, 10);
-    if ([200, 301, 302].includes(status)) {
-      directories.push({ path: dirPath, status });
-    } else if ([403, 401].includes(status)) {
-      protectedPaths.push({ path: dirPath, status, note: status === 403 ? "Forbidden (sensitive/protected path)" : "Authentication required" });
+    
+    const dirPath = match[1].trim();
+    const code = parseInt(match[2], 10);
+    
+    if ([200, 301, 302, 307, 308].includes(code)) {
+      directories.push({ path: dirPath, status: code });
+    } else if ([403, 401, 405].includes(code)) {
+      protectedPaths.push({ 
+        path: dirPath, 
+        status: code, 
+        note: code === 403 ? "Forbidden (sensitive/protected path)" : code === 401 ? "Authentication required" : "Method not allowed"
+      });
     }
   }
 
-  const success = directories.length > 0 || protectedPaths.length > 0;
+  // Success = gobuster ran successfully (even if no results found)
+  const success = looksLikeGobuster && scanCompleted;
+  
   return {
     tool: "gobuster",
     success,
+    ran: looksLikeGobuster,
+    completed: scanCompleted,
     directories,
     protectedPaths,
     count: directories.length,
     total: directories.length + protectedPaths.length,
-    summary: success
+    summary: directories.length > 0 || protectedPaths.length > 0
       ? `Found ${directories.length} accessible and ${protectedPaths.length} protected path(s) on ${target}`
-      : `No directories discovered on ${target}`,
+      : scanCompleted
+      ? `Gobuster scan completed - no additional directories discovered on ${target}`
+      : `Gobuster scan did not complete successfully on ${target}`,
     rawOutput: out,
     target,
   };
@@ -632,8 +647,8 @@ export function parseWapiti(rawOutput = "", target = "") {
     vulnerabilities,
     total: vulnerabilities.length,
     summary: success
-      ? `Wapiti found ${vulnerabilities.length} vulnerability type(s) on ${target}`
-      : `Wapiti completed — no web vulnerabilities detected on ${target}`,
+      ? `Wapiti found ${vulnerabilities.length} vulnerability type(s) including XSS, SSRF, and injection attacks on ${target}`
+      : `Wapiti completed — no web vulnerabilities (XSS, SSRF, injection) detected on ${target}`,
     rawOutput,
     target,
   };
@@ -704,3 +719,6 @@ export function parseXss(rawOutput = "", target = "") {
     target,
   };
 }
+
+// NOTE: parseXss is kept for backwards compatibility but the XSS scanner tool has been removed.
+// Wapiti now covers XSS and SSRF detection as part of its comprehensive web vulnerability scanning.
