@@ -3,7 +3,7 @@ import https from "https";
 import { randomUUID } from "crypto";
 import path from "path";
 import fs from "fs";
-import { exec } from "child_process";
+import { exec, execFile } from "child_process";
 import util from "util";
 import dns from "dns/promises";
 import { Scan } from "../models/scans-mongoose.js";
@@ -20,6 +20,7 @@ import { detectPlatform } from "../utils/platform-detector.js";
 import { extractReconData } from "../utils/reconDataExtractor.js";
 import { decideScanPlan } from "../utils/scanDecisionEngine.js";
 import { ensureDailyScanReset } from "../utils/daily-scan-reset.js";
+import { validateTargetHost, isLocalhostRequest, ALLOWED_BRIDGE_HOSTS } from "../utils/ssrf-protection.js";
 
 const execPromise = util.promisify(exec);
 
@@ -120,9 +121,20 @@ export async function pingTarget(req, res) {
       targetPort = parts[1] || '80';
     }
 
-    // Attempt ICMP Ping first
+    // ✅ SECURITY FIX: SSRF Validation - Block access to private networks
+    const ssrfCheck = validateTargetHost(targetHost);
+    if (!ssrfCheck.allowed) {
+      return res.status(403).json({ success: false, error: ssrfCheck.reason });
+    }
+
+    // Attempt ICMP Ping first (using execFile to prevent command injection)
     try {
-      await execPromise(`ping -c 1 -W 2 ${targetHost}`);
+      await new Promise((resolve, reject) => {
+        execFile('ping', ['-c', '1', '-W', '2', targetHost], (error) => {
+          if (error) reject(error);
+          else resolve();
+        });
+      });
       return res.json({ 
         success: true, 
         message: "Target is reachable and alive.", 
@@ -158,10 +170,9 @@ export async function pingTarget(req, res) {
 
       // If backend runs in Docker, localhost may point to the container itself.
       // Probe common host bridge aliases as fallback so local DVWA can still be detected.
-      const isLoopback = ["localhost", "127.0.0.1", "::1"].includes(parsedUrl.hostname);
+      const isLoopback = isLocalhostRequest(parsedUrl.hostname);
       if (isLoopback) {
-        const bridgeHosts = ["host.docker.internal", "172.17.0.1"];
-        for (const bridgeHost of bridgeHosts) {
+        for (const bridgeHost of ALLOWED_BRIDGE_HOSTS) {
           const bridgePrimary = new URL(parsedUrl.href);
           bridgePrimary.hostname = bridgeHost;
           if (!probeUrls.includes(bridgePrimary.href)) {
@@ -896,8 +907,15 @@ export async function startScan(req, res) {
       return res.status(400).json({ success: false, error: "targetUrl and scanType are required" });
     }
 
+    // ✅ SECURITY FIX: Validate scanType
     if (scanType !== "all" && !ALLOWED_SCANS.includes(scanType)) {
       return res.status(400).json({ success: false, error: "Invalid scanType" });
+    }
+
+    // ✅ SECURITY FIX: Validate scanMode
+    const validModes = ["quick", "deep", "full"];
+    if (!validModes.includes(scanMode)) {
+      return res.status(400).json({ success: false, error: "Invalid scanMode. Must be one of: quick, deep, full" });
     }
 
     const validation = urlValidation(targetUrl);
@@ -921,6 +939,14 @@ export async function startScan(req, res) {
     
     // Explicitly allow localhost and local testing ips
     const isLocal = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.') || hostname.startsWith('10.');
+
+    // ✅ SECURITY FIX: SSRF Validation
+    if (!isLocal) {
+      const ssrfCheck = validateTargetHost(hostname);
+      if (!ssrfCheck.allowed) {
+        return res.status(403).json({ success: false, error: ssrfCheck.reason });
+      }
+    }
 
     if (!isLocal) {
       // Common, gov, social media, and major tech websites

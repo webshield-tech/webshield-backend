@@ -21,6 +21,15 @@ export async function forgotPassword(req, res) {
       });
     }
 
+    // ✅ SECURITY FIX: Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid email format",
+      });
+    }
+
     // CHECK IF USER EXISTS
     const user = await User.findOne({ email });
 
@@ -102,12 +111,16 @@ export async function resetPassword(req, res) {
       });
     }
 
-    // CHECKING TOKEN IN DATABASE
-    const resetRecord = await passReset.findOne({
-      token: token,
-      email: decoded.email,
-      used: false,
-    });
+    // CHECKING TOKEN IN DATABASE - ATOMIC CHECK AND MARK
+    const resetRecord = await passReset.findOneAndUpdate(
+      {
+        token: token,
+        email: decoded.email,
+        used: false,
+      },
+      { used: true },
+      { new: false }
+    );
 
     if (!resetRecord) {
       console.log("Token not found or already used/expired");
@@ -139,11 +152,7 @@ const hashedPassword = await bcrypt.hash(newPassword, salt);
       { password: hashedPassword }
     );
 
-    // MARKING TOKEN AS USED
-    await passReset.findByIdAndUpdate(resetRecord._id, {
-      used: true,
-    });
-
+    // Token already marked as used atomically above
     console.log(`Password reset successful for: ${decoded.email}`);
     return res.json({
       success: true,

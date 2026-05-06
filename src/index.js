@@ -13,6 +13,7 @@ import { injectionDetector } from "./middlewares/security.js";
 import helmet from "helmet";
 import mongoSanitize from "express-mongo-sanitize";
 import cors from "cors";
+import { csrfProtectionMiddleware } from "./middlewares/csrf-protection.js";
 
 import { seedAdmin } from "./utils/seed-admin.js";
 import { killAllProcesses } from "./services/scan-runner.js";
@@ -27,16 +28,13 @@ app.set("trust proxy", 1);
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
   contentSecurityPolicy: false, // CSP managed at CDN/Vercel level
+  hsts: { maxAge: 31536000, includeSubDomains: true, preload: true }, // ✅ HSTS for HTTPS enforcement
+  frameguard: { action: "deny" },
+  noSniff: true,
 }));
 
-// Sanitize req.body / req.params / req.query to prevent NoSQL injection
-app.use((req, res, next) => {
-  if (req.body) mongoSanitize.sanitize(req.body);
-  if (req.query) mongoSanitize.sanitize(req.query);
-  if (req.params) mongoSanitize.sanitize(req.params);
-  if (req.headers) mongoSanitize.sanitize(req.headers);
-  next();
-});
+// Sanitize data to prevent NoSQL injection attacks
+app.use(mongoSanitize());
 const configuredFrontendUrl = process.env.FRONTEND_URL;
 const allowAllCors = String(process.env.CORS_ALLOW_ALL || "").toLowerCase() === "true";
 const envAllowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || "")
@@ -109,6 +107,24 @@ const globalLimiter = rateLimit({
 });
 app.use(globalLimiter);
 
+// ✅ SECURITY FIX: Add CSRF protection for state-changing requests
+app.use(csrfProtectionMiddleware);
+
+// ✅ SECURITY FIX: Improve cookie security with SameSite attribute
+app.use((req, res, next) => {
+  // Override cookie setter to add SameSite and Secure attributes
+  const originalSetCookie = res.setHeader;
+  res.setHeader = function(name, value) {
+    if (name.toLowerCase() === 'set-cookie') {
+      if (!value.includes('SameSite')) {
+        value = value + '; SameSite=Strict; Secure; HttpOnly';
+      }
+    }
+    return originalSetCookie.apply(res, arguments);
+  };
+  next();
+});
+
 connectDB().then(() => {
   seedAdmin();
 });
@@ -169,3 +185,18 @@ const gracefulShutdown = async (signal) => {
 
 process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 process.on("SIGINT",  () => gracefulShutdown("SIGINT"));
+
+// ✅ SECURITY FIX: Handle unhandled promise rejections
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("[UNHANDLED REJECTION] Promise:", promise, "Reason:", reason);
+  // In production, send alert to monitoring system
+  // Don't crash the server, just log it
+});
+
+// ✅ SECURITY FIX: Handle uncaught exceptions
+process.on("uncaughtException", (error) => {
+  console.error("[UNCAUGHT EXCEPTION]", error);
+  // In production, send alert to monitoring system
+  // Exit gracefully
+  gracefulShutdown("UNCAUGHT EXCEPTION");
+});
