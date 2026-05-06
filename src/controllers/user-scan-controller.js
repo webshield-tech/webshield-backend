@@ -455,8 +455,8 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
     return {
       executable: "nmap",
       args,
-      // ✅ ULTRA-OPTIMIZED: Much shorter timeout for auto-scan
-      opts: { timeoutMs: scanMode === "full" ? 900000 : 60000, maxRaw: 300000 },
+      // ✅ ULTRA-OPTIMIZED: Much shorter timeout for auto-scan (30s for quick, 15min for full)
+      opts: { timeoutMs: scanMode === "full" ? 900000 : 30000, maxRaw: 300000 },
     };
   }
 
@@ -485,7 +485,8 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
     return {
       executable: "sslscan",
       args: sslArgs,
-      opts: { timeoutMs: 120000, maxRaw: 200000 },
+      // ✅ OPTIMIZED: Reduce SSL timeout for quick auto-scan
+      opts: { timeoutMs: scanMode === "quick" ? 60000 : 120000, maxRaw: 200000 },
     };
   }
 
@@ -604,7 +605,8 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
     return {
       executable: "nuclei",
       args,
-      opts: { timeoutMs: 600000 },
+      // ✅ OPTIMIZED: Nuclei is now first tool, needs to be fast for auto-scan
+      opts: { timeoutMs: scanMode === "quick" ? 120000 : 600000 },
     };
   }
 

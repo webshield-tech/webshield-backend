@@ -48,16 +48,14 @@ export function decideScanPlan(reconData, scanMode = 'deep') {
   // 3. Nmap (lightweight version for quick mode)
   setDecision('nmap', 'run', 'Core port scanning', 1.0);
   
-  // 4. Web / TLS baseline checks
+  // 4. Nikto web server audit
   if (scanMode === 'quick') {
     setDecision('nikto', 'skip', 'Heavy web scanner skipped in Quick Scan mode', 0.9);
   } else {
     setDecision('nikto', 'run', 'Standard web vulnerability scanner for deep scan', 0.8);
   }
-    setDecision('ssl', 'skip', 'No HTTPS port detected', 0.95, ['Only HTTP detected']);
-  }
 
-  // 3. Input-aware web app checks
+  // 5. Input-aware web app checks
   // SQLMap and Wapiti are only useful when the app shows signs of backend or forms.
   if (reconData.isStaticFrontend) {
     setDecision('sqlmap', 'skip', 'Static frontend detected (no backend database)', 0.95, evidence.htmlIndicators);
@@ -83,7 +81,7 @@ export function decideScanPlan(reconData, scanMode = 'deep') {
     setDecision('wapiti', 'skip', 'No input forms detected', 0.85, ['No <form> elements found']);
   }
 
-  // 4. Rate limit check — decide ONCE based on static frontend flag
+  // 6. Rate limit check — decide ONCE based on static frontend flag
   // Do NOT set ratelimit decision multiple times (prevents double-set bug)
   if (reconData.isStaticFrontend) {
     setDecision('ratelimit', 'skip', 'Frontend-only target detected (no backend/API surface)', 0.9, evidence.htmlIndicators);
@@ -97,7 +95,7 @@ export function decideScanPlan(reconData, scanMode = 'deep') {
     }
   }
 
-  // 5. Deep discovery / auxiliary checks
+  // 7. Deep discovery / auxiliary checks
   const hasBackendDetected = !reconData.isStaticFrontend && (reconData.hasInputForms || reconData.hasLoginForm);
 
   if (scanMode === 'deep' || hasBackendDetected) {
