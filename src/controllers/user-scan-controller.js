@@ -432,20 +432,22 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
         hostname,
       ];
     } else {
+      // ✅ ULTRA-OPTIMIZED: Minimal nmap for auto-scan
+      // Only check if common web ports are open, no service detection
       args = [
+        "-Pn",
         "-p",
-        "80,443,8080",
-        "-sV",
-        "-v",
+        "80,443",
         "--max-retries",
-        "1",
+        "0",
         "--host-timeout",
-        "240s",
+        "30s",
+        "-T5",
         hostname,
       ];
     }
 
-    if (shouldEnableNmapOsDetection()) {
+    if (shouldEnableNmapOsDetection() && scanMode === "full") {
       const osFlags = isRunningAsRoot() ? ["-O"] : ["--privileged", "-O"];
       args.splice(args.indexOf("-sV"), 0, ...osFlags);
     }
@@ -453,7 +455,8 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
     return {
       executable: "nmap",
       args,
-      opts: { timeoutMs: scanMode === "full" ? 900000 : 360000, maxRaw: 800000 },
+      // ✅ ULTRA-OPTIMIZED: Much shorter timeout for auto-scan
+      opts: { timeoutMs: scanMode === "full" ? 900000 : 60000, maxRaw: 300000 },
     };
   }
 

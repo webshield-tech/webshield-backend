@@ -70,6 +70,25 @@ export async function extractReconData(targetUrl) {
     const xPoweredBy = (headers['x-powered-by'] || '').toLowerCase();
     const bodyStr = response.data.toLowerCase();
     
+    // ✅ IMPROVED: Better backend detection
+    // Check for backend server signatures (real servers, not CDNs)
+    const hasBackendSignature = (
+      serverHeader.includes('apache') ||
+      serverHeader.includes('nginx') ||
+      serverHeader.includes('express') ||
+      serverHeader.includes('django') ||
+      serverHeader.includes('rails') ||
+      serverHeader.includes('tomcat') ||
+      serverHeader.includes('microsoft-iis') ||
+      xPoweredBy.includes('express') ||
+      xPoweredBy.includes('django') ||
+      xPoweredBy.includes('rails') ||
+      xPoweredBy.includes('php') ||
+      xPoweredBy.includes('java') ||
+      bodyStr.includes('csrf') || // CSRF tokens indicate backend
+      bodyStr.includes('authenticity') // Rails/Django CSRF
+    );
+    
     // Static/JAMstack detection - requires a REAL platform signature (not just id="root")
     // id="root" and id="app" are used by every React/Vue app, including full-stack ones with a backend
     const hasPlatformSignature = (
@@ -81,11 +100,15 @@ export async function extractReconData(targetUrl) {
       bodyStr.includes('__nuxt')
     );
     
-    // Only call it static if the hosting platform CONFIRMS it's a static deploy
-    // AND there are no forms/inputs (which would indicate a backend exists)
-    if (hasPlatformSignature && !reconData.hasInputForms) {
+    // Only call it static if:
+    // 1. NO backend server signature detected
+    // 2. Platform signature CONFIRMS static hosting
+    // 3. NO forms/inputs on homepage
+    if (hasPlatformSignature && !reconData.hasInputForms && !hasBackendSignature) {
       reconData.isStaticFrontend = true;
       reconData.evidence.htmlIndicators.push('Static JAMstack/Frontend confirmed by platform signature');
+    } else if (hasBackendSignature) {
+      reconData.evidence.htmlIndicators.push(`Backend server detected: ${serverHeader || xPoweredBy || 'Dynamic backend'}`);
     } else if (hasPlatformSignature && reconData.hasInputForms) {
       // Platform signature found but forms exist — could be static with embedded forms (e.g. Netlify Forms)
       // Don't mark as static to ensure we test the forms

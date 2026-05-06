@@ -34,20 +34,26 @@ export function decideScanPlan(reconData, scanMode = 'deep') {
 
   const { evidence } = reconData;
 
-  // 1. Mandatory Core Tools
-  setDecision('nmap', 'run', 'Core port scanning required for all targets', 1.0);
-  setDecision('nuclei', 'run', 'Core template-based vulnerability scanning required', 1.0);
+  // ✅ OPTIMIZED: Run tools in order of speed (fastest first for better UX)
+  // 1. Nuclei (fastest - template matching)
+  setDecision('nuclei', 'run', 'Fast template-based vulnerability scanning', 1.0);
   
-  // 2. Web / TLS baseline checks
+  // 2. SSL check (very fast if port 443 is open)
+  if (reconData.hasSSL || reconData.openPorts.includes(443)) {
+    setDecision('ssl', 'run', 'HTTPS (port 443) detected', 0.98, ['Port 443 is open or https:// scheme used']);
+  } else {
+    setDecision('ssl', 'skip', 'No HTTPS port detected', 0.95, ['Only HTTP detected']);
+  }
+  
+  // 3. Nmap (lightweight version for quick mode)
+  setDecision('nmap', 'run', 'Core port scanning', 1.0);
+  
+  // 4. Web / TLS baseline checks
   if (scanMode === 'quick') {
     setDecision('nikto', 'skip', 'Heavy web scanner skipped in Quick Scan mode', 0.9);
   } else {
     setDecision('nikto', 'run', 'Standard web vulnerability scanner for deep scan', 0.8);
   }
-
-  if (reconData.hasSSL || reconData.openPorts.includes(443)) {
-    setDecision('ssl', 'run', 'HTTPS (port 443) detected', 0.98, ['Port 443 is open or https:// scheme used']);
-  } else {
     setDecision('ssl', 'skip', 'No HTTPS port detected', 0.95, ['Only HTTP detected']);
   }
 
