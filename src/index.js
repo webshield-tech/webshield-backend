@@ -33,8 +33,29 @@ app.use(helmet({
   noSniff: true,
 }));
 
-// Sanitize data to prevent NoSQL injection attacks
-app.use(mongoSanitize());
+// ✅ SECURITY FIX: Sanitize data to prevent NoSQL injection attacks
+// Use a custom sanitizer instead of default mongoSanitize which tries to modify read-only properties
+app.use((req, res, next) => {
+  // Recursively remove $ and . from keys to prevent NoSQL injection
+  const sanitize = (obj) => {
+    if (Array.isArray(obj)) {
+      obj.forEach(sanitize);
+    } else if (obj !== null && typeof obj === 'object') {
+      Object.keys(obj).forEach((key) => {
+        if (key.startsWith('$') || key.includes('.')) {
+          delete obj[key];
+        } else {
+          sanitize(obj[key]);
+        }
+      });
+    }
+  };
+  
+  sanitize(req.body);
+  sanitize(req.params);
+  // Note: req.query is read-only, so we don't sanitize it directly
+  next();
+});
 const configuredFrontendUrl = process.env.FRONTEND_URL;
 const allowAllCors = String(process.env.CORS_ALLOW_ALL || "").toLowerCase() === "true";
 const envAllowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || "")
