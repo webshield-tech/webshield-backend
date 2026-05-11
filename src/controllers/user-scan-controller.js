@@ -708,7 +708,10 @@ async function launchScanInBackground(scanId, finalUrl, scanType, cookies = "", 
 }
 
 async function getTodayScanStats(userId) {
-  await ensureDailyScanReset(userId);
+  const resetResult = await ensureDailyScanReset(userId);
+  const resetWindowStart = resetResult?.user?.lastScanQuotaResetAt
+    ? new Date(resetResult.user.lastScanQuotaResetAt)
+    : null;
 
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
@@ -741,12 +744,17 @@ async function getTodayScanStats(userId) {
   // Sum ALL tools (not just the original 4)
   const singleUsed = Object.values(byTool).reduce((a, b) => a + b, 0);
   const totalUsed = singleUsed + autoBatchIds.size;
+  const windowResetsAt = resetWindowStart
+    ? new Date(resetWindowStart.getTime() + 24 * 60 * 60 * 1000)
+    : null;
   return {
     byTool,
     autoUsed: autoBatchIds.size,
     singleUsed,
     totalUsed,
     singleLimit: DAILY_PER_TOOL_LIMIT * ALLOWED_SCANS.length,
+    resetAt: windowResetsAt ? windowResetsAt.toISOString() : null,
+    resetInMs: windowResetsAt ? Math.max(0, windowResetsAt.getTime() - Date.now()) : null,
   };
 }
 
@@ -1049,8 +1057,9 @@ export async function startScan(req, res) {
       const decisionMode = scanMode === "full" ? "deep" : scanMode;
       const executionPlan = decideScanPlan(reconData, decisionMode || "quick");
       const availability = await computeToolAvailability();
-      const availableRun = executionPlan.run.filter((tool) => availability.byTool[tool] !== false);
-      const missingRun = executionPlan.run.filter((tool) => availability.byTool[tool] === false);
+      // Treat a tool as available only when explicitly true in availability.byTool
+      const availableRun = executionPlan.run.filter((tool) => availability.byTool[tool] === true);
+      const missingRun = executionPlan.run.filter((tool) => availability.byTool[tool] !== true);
       const mergedSkip = Array.from(new Set([...(executionPlan.skip || []), ...missingRun]));
       const planDetails = { ...executionPlan.details };
 
@@ -1143,6 +1152,31 @@ export async function startScan(req, res) {
       })();
 
       return;
+    }
+
+    // Manual SQLMap safeguard: block obviously frontend-only targets to prevent pointless or misleading scans.
+    if (scanType === "sqlmap") {
+      let manualRecon = null;
+      try {
+        manualRecon = await extractReconData(finalUrl);
+      } catch (reconError) {
+        console.warn("[startScan] Manual SQLMap recon failed:", reconError?.message || reconError);
+      }
+
+      if (manualRecon?.isStaticFrontend && !manualRecon?.hasInputForms && !manualRecon?.hasLoginForm) {
+        return res.status(400).json({
+          success: false,
+          error: "SQLMap is blocked for frontend-only targets. The site appears static and does not expose forms or a backend surface.",
+          detection: {
+            isStaticFrontend: true,
+            hasInputForms: false,
+            hasLoginForm: false,
+            platform: manualRecon?.platform || null,
+            technologies: manualRecon?.technologies || [],
+            evidence: manualRecon?.evidence || {},
+          },
+        });
+      }
     }
 
       const scanDoc = await Scan.create({
