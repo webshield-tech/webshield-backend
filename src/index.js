@@ -131,21 +131,6 @@ app.use(globalLimiter);
 // ✅ SECURITY FIX: Add CSRF protection for state-changing requests
 app.use(csrfProtectionMiddleware);
 
-// ✅ SECURITY FIX: Improve cookie security with SameSite attribute
-app.use((req, res, next) => {
-  // Override cookie setter to add SameSite and Secure attributes
-  const originalSetCookie = res.setHeader;
-  res.setHeader = function(name, value) {
-    if (name.toLowerCase() === 'set-cookie') {
-      if (!value.includes('SameSite')) {
-        value = value + '; SameSite=Strict; Secure; HttpOnly';
-      }
-    }
-    return originalSetCookie.apply(res, arguments);
-  };
-  next();
-});
-
 connectDB().then(() => {
   seedAdmin();
 });

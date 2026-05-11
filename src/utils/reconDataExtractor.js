@@ -7,6 +7,7 @@ import https from 'https';
  * Extracts data and evidence to feed into the scan decision engine.
  */
 export async function extractReconData(targetUrl) {
+  const timeoutMs = Number(process.env.RECON_TIMEOUT_MS || 15000);
   const reconData = {
     hasLoginForm: false,
     hasInputForms: false,
@@ -30,7 +31,7 @@ export async function extractReconData(targetUrl) {
     console.log(`[Recon] Starting scout phase for ${targetUrl}`);
     const response = await axios.get(targetUrl, {
       httpsAgent,
-      timeout: 10000,
+      timeout: timeoutMs,
       maxRedirects: 3,
     });
 
