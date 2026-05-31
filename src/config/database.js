@@ -7,8 +7,6 @@ export async function connectDB() {
   }
 
   try {
-    await mongoose.connect(process.env.DB_URL, { serverSelectionTimeoutMS: 5000 });
-
     mongoose.connection.on("connected", () => {
       console.log("MongoDB connected");
     });
@@ -19,10 +17,9 @@ export async function connectDB() {
       console.warn("MongoDB disconnected");
     });
 
-    // Database initialized
-    console.log("Database initialized");
-    return true;
+    await mongoose.connect(process.env.DB_URL, { serverSelectionTimeoutMS: 5000 });
 
+    // Database initialized
     console.log("Database initialized");
     return true;
   } catch (err) {

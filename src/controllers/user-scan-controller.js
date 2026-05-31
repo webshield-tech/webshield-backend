@@ -1514,8 +1514,6 @@ export async function detectWebsite(req, res) {
     if (!validation.valid) return res.status(400).json({ success: false, error: validation.error });
 
     const finalUrl = validation.url;
-    const { extractReconData } = await import("../utils/reconDataExtractor.js");
-    const { decideScanPlan } = await import("../utils/scanDecisionEngine.js");
 
     let reconData;
     try {

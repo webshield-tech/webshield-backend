@@ -1,5 +1,6 @@
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
+import { User } from "../models/users-mongoose.js";
 
 dotenv.config();
 
@@ -31,7 +32,6 @@ export async function checkAuth(req, res, next) {
     }
 
     // Check if user is blocked (fetch only isBlocked field for efficiency)
-    const { User } = await import('../models/users-mongoose.js');
     const user = await User.findById(req.userId).select('isBlocked').lean();
     if (user && user.isBlocked) {
       return res.status(403).json({ success: false, error: "Your account has been blocked" });
