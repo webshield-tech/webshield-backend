@@ -1,0 +1,11 @@
+tunnel: webshield-api
+credentials-file: /etc/cloudflared/webshield-api.json
+
+ingress:
+  - hostname: api.webshield.tech
+    service: http://127.0.0.1:4000
+    originRequest:
+      noTLSVerify: true
+      connectTimeout: 30s
+      keepAliveConnections: 100
+  - service: http_status:404
