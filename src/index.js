@@ -12,7 +12,6 @@ import rateLimit from "express-rate-limit";
 import { injectionDetector } from "./middlewares/security.js";
 import csrfProtectionMiddleware from "./middlewares/csrf-protection.js";
 import helmet from "helmet";
-import mongoSanitize from "express-mongo-sanitize";
 import cors from "cors";
 
 import { seedAdmin } from "./utils/seed-admin.js";
@@ -33,6 +32,18 @@ app.use(helmet({
   noSniff: true,
 }));
 
+// Minimal request logging to help diagnose preflight/CORS failures.
+app.use((req, res, next) => {
+  try {
+    const origin = req.headers?.origin || "-";
+    const acrh = req.headers?.["access-control-request-headers"] || "-";
+    console.log(`[REQ] ${req.method} ${req.originalUrl} Origin:${origin} ACRH:${acrh}`);
+  } catch {
+    // ignore logging failures
+  }
+  next();
+});
+
 // Reject malformed request targets before the router tries to decode them.
 app.use((req, res, next) => {
   const requestTarget = String(req.originalUrl || req.url || "");
@@ -50,7 +61,6 @@ app.use((req, res, next) => {
 });
 
 // ✅ SECURITY FIX: Sanitize data to prevent NoSQL injection attacks
-// Use a custom sanitizer instead of default mongoSanitize which tries to modify read-only properties
 app.use((req, res, next) => {
   // Recursively remove $ and . from keys to prevent NoSQL injection
   const sanitize = (obj) => {
@@ -68,27 +78,14 @@ app.use((req, res, next) => {
   };
   
   sanitize(req.body);
-      console.log(`[CORS Check] Origin: ${origin}`);
-      if (!origin) return callback(null, true);
-      if (allowAllCors) return callback(null, true);
   sanitize(req.params);
-  // Sanitize req.query in-place where possible. Some environments expose
-  // `req.query` as a getter-only property; avoid assigning to it directly.
-  try {
-    const q = req.query;
-    if (q && typeof q === "object") {
-      for (const key of Object.keys(q)) {
-        if (key.startsWith("$") || key.includes(".")) {
-          try {
-            delete q[key];
-          } catch (e) {
-            // ignore - best effort
-          }
-        }
+  // Avoid touching req.query directly here; in this Express/router setup it can be read-only.
+  if (req.query && typeof req.query === "object") {
+    for (const key of Object.keys(req.query)) {
+      if (key.startsWith("$") || key.includes(".")) {
+        delete req.query[key];
       }
     }
-  } catch (e) {
-    // Defensive: if reading req.query throws, ignore and continue
   }
   next();
 });
@@ -147,54 +144,27 @@ const corsOptions = {
   allowedHeaders: ["Content-Type", "Authorization", "Cookie", "X-Requested-With"],
 };
 
-app.use(cors(corsOptions));
-// Ensure preflight (OPTIONS) requests are handled for any path
-app.options("*", cors(corsOptions));
+app.use(cors({ ...corsOptions, preflightContinue: true }));
 
-// Request logger (minimal, avoid logging sensitive headers)
+// Explicit preflight handler that does not rely on wildcard path patterns.
 app.use((req, res, next) => {
+  if (req.method !== "OPTIONS") return next();
+
   try {
-    const origin = req.headers && req.headers.origin;
-    const acrh = req.headers && req.headers["access-control-request-headers"];
-    console.log(`[REQ] ${req.method} ${req.originalUrl} Origin:${origin || '-'} ACRH:${acrh || '-'} `);
-  } catch (e) {
-    // ignore logging errors
-  }
-  next();
-});
-
-// Use CORS middleware, but also log preflight handling details so we can debug failures.
-app.options("*", (req, res) => {
-  // Run CORS middleware for preflight and then return a minimal 204.
-  try {
-    const origin = req.headers && req.headers.origin;
-    const acrh = req.headers && req.headers["access-control-request-headers"];
-    console.log(`[PREFLIGHT] ${req.method} ${req.originalUrl} Origin:${origin || '-'} ACRH:${acrh || '-'} `);
-    cors(corsOptions)(req, res, (err) => {
-      if (err) {
-        console.error("[PREFLIGHT][CORS] Error while handling preflight:", err && err.message ? err.message : err);
-        return res.status(500).json({ success: false, error: "CORS preflight error" });
-      }
-
-      // Log what CORS headers we are returning for debugging
-      try {
-        const returned = {
-          origin: res.getHeader("Access-Control-Allow-Origin") || null,
-          credentials: res.getHeader("Access-Control-Allow-Credentials") || null,
-          allowedHeaders: res.getHeader("Access-Control-Allow-Headers") || null,
-          methods: res.getHeader("Access-Control-Allow-Methods") || null,
-        };
-        console.log("[PREFLIGHT][CORS] Response headers:", returned);
-      } catch (e) {
-        // ignore
-      }
-
-      return res.status(204).end();
+    const origin = req.headers?.origin || "-";
+    const acrh = req.headers?.["access-control-request-headers"] || "-";
+    console.log(`[PREFLIGHT] ${req.method} ${req.originalUrl} Origin:${origin} ACRH:${acrh}`);
+    console.log("[PREFLIGHT][CORS] Response headers:", {
+      origin: res.getHeader("Access-Control-Allow-Origin") || null,
+      credentials: res.getHeader("Access-Control-Allow-Credentials") || null,
+      allowedHeaders: res.getHeader("Access-Control-Allow-Headers") || null,
+      methods: res.getHeader("Access-Control-Allow-Methods") || null,
     });
-  } catch (e) {
-    console.error("[PREFLIGHT] Unexpected error:", e && e.message ? e.message : e);
-    return res.status(500).end();
+  } catch {
+    // ignore logging failures
   }
+
+  return res.sendStatus(204);
 });
 
 app.use(express.json({ limit: "1mb" }));
