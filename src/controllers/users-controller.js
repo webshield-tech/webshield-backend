@@ -210,7 +210,7 @@ export async function checkUser(user) {
 
     const userExists = await User.findOne({
       $or: [{ email: identifier }, { username: identifier }],
-    });
+    }).select("+password");
 
     console.log(`[AUTH] Checking user: ${identifier}`);
 
@@ -245,7 +245,7 @@ export async function checkUser(user) {
       console.warn(`[AUTH] Missing password hash for user: ${identifier}`);
       return {
         success: false,
-        error: "This account does not have a password set. Use social login or reset the password.",
+        error: "This account does not have a readable password hash. Please reset your password or sign in with the original method.",
       };
     }
 

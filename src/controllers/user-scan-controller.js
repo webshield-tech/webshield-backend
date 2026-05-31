@@ -23,6 +23,7 @@ import { ensureDailyScanReset } from "../utils/daily-scan-reset.js";
 import { validateTargetHost, isLocalhostRequest, ALLOWED_BRIDGE_HOSTS } from "../utils/ssrf-protection.js";
 
 const execPromise = util.promisify(exec);
+const execFilePromise = util.promisify(execFile);
 
 const ALLOWED_SCANS = ["nmap", "nikto", "ssl", "sqlmap", "gobuster", "ratelimit", "ffuf", "wapiti", "nuclei", "dns", "whois"];
 const DAILY_PER_TOOL_LIMIT = 10;
@@ -293,6 +294,22 @@ function resolveSslTarget(url) {
     return `${parsed.hostname}:${parsed.port}`;
   }
   return parsed.hostname;
+}
+
+function resolveWhoisQuery(url) {
+  const parsed = new URL(url);
+  const host = parsed.hostname.toLowerCase();
+
+  // For domains/subdomains, WHOIS generally works best on the registrable domain.
+  // For IPs, keep the address as-is so WHOIS can query the netblock.
+  if (/^(?:\d{1,3}\.){3}\d{1,3}$/.test(host) || host.includes(":")) {
+    return host;
+  }
+
+  const parts = host.split(".").filter(Boolean);
+  if (parts.length <= 2) return host;
+
+  return parts.slice(-2).join(".");
 }
 
 function extractDvwaToken(html = "") {
@@ -647,14 +664,11 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
   }
 
   if (scanType === "whois") {
-    const hostname = new URL(finalUrl).hostname;
-    // Get base domain (e.g., example.com from sub.example.com)
-    const domainParts = hostname.split(".");
-    const baseDomain = domainParts.slice(-2).join(".");
+    const whoisTarget = resolveWhoisQuery(finalUrl);
     
     return {
       executable: "whois",
-      args: [baseDomain],
+      args: [whoisTarget],
       opts: { timeoutMs: 30000 },
     };
   }
@@ -1597,11 +1611,10 @@ export async function whoisLookupInline(req, res) {
     }
 
     const clean = hostname.trim().replace(/^https?:\/\//i, "").split("/")[0];
-    const domainParts = clean.split(".");
-    const baseDomain = domainParts.slice(-2).join(".");
+    const baseDomain = resolveWhoisQuery(`http://${clean}`);
 
     try {
-      const { stdout } = await execPromise(`whois ${JSON.stringify(baseDomain)}`, { timeout: 15000 });
+      const { stdout } = await execFilePromise("whois", [baseDomain], { timeout: 15000 });
       return res.json({ success: true, hostname: clean, baseDomain, data: stdout.slice(0, 6000) });
     } catch (execErr) {
       return res.status(500).json({ success: false, error: `WHOIS lookup failed: ${execErr.message}` });
