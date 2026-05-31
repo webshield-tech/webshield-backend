@@ -28,6 +28,29 @@ const ALLOWED_SCANS = ["nmap", "nikto", "ssl", "sqlmap", "gobuster", "ratelimit"
 const DAILY_PER_TOOL_LIMIT = 10;
 const DAILY_AUTO_LIMIT = 5;
 
+function getAvailableMemoryMb() {
+  try {
+    const meminfo = fs.readFileSync("/proc/meminfo", "utf8");
+    const match = meminfo.match(/^MemAvailable:\s+(\d+)\s+kB/m);
+    if (match) {
+      return Math.floor(Number(match[1]) / 1024);
+    }
+  } catch {
+    // Ignore and fall back to env/manual tuning.
+  }
+
+  return null;
+}
+
+function isLowMemoryMode() {
+  if (String(process.env.SCAN_LOW_MEMORY_MODE || "").toLowerCase() === "true") {
+    return true;
+  }
+
+  const availableMb = getAvailableMemoryMb();
+  return availableMb !== null && availableMb < 750;
+}
+
 async function checkBinaryAvailable(binaryName) {
   try {
     await execPromise(`command -v ${binaryName}`);
@@ -61,13 +84,14 @@ async function computeToolAvailability() {
   byTool.sslscan = byTool.ssl === true;
 
   const nodeAvailable = await checkBinaryAvailable("node");
+  const pythonAvailable = await checkBinaryAvailable("python3");
   const scriptChecks = {
-    ratelimit: path.join(process.cwd(), "src", "utils", "ratelimit-test.js"),
+    ratelimit: path.join(process.cwd(), "src", "utils", "ratelimit-test.py"),
     dns: path.join(process.cwd(), "src", "utils", "dns-verify.js"),
   };
 
   for (const [tool, scriptPath] of Object.entries(scriptChecks)) {
-    byTool[tool] = nodeAvailable && fs.existsSync(scriptPath);
+    byTool[tool] = (tool === "ratelimit" ? pythonAvailable : nodeAvailable) && fs.existsSync(scriptPath);
   }
 
   const available = Object.entries(byTool)
@@ -415,6 +439,7 @@ function isRunningAsRoot() {
 
 async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quick", sqlmapUrl = "") {
   const hostname = resolveHostname(finalUrl);
+  const lowMemoryMode = isLowMemoryMode();
 
   if (scanType === "nmap") {
     let args = [];
@@ -514,6 +539,7 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
 
     const level = scanMode === "full" ? "5" : "3";
     const risk  = scanMode === "full" ? "3" : "2";
+    const threadCount = lowMemoryMode ? "2" : "4";
 
     // Unique output dir per scan prevents cached "not injectable" sessions
     // from a previous run poisoning the results of this one.
@@ -524,7 +550,7 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
       "--batch",
       "--level", level,
       "--risk",  risk,
-      "--threads", "4",
+      "--threads", threadCount,
       "--timeout", "30",
       "--retries", "2",
       "--random-agent",
@@ -557,56 +583,56 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
 
   if (scanType === "gobuster") {
     const wordlistPath = path.join(process.cwd(), "wordlist.txt");
-    const args = ["dir", "-u", finalUrl, "-w", wordlistPath, "-t", "20", "--no-error"];
+    const args = ["dir", "-u", finalUrl, "-w", wordlistPath, "-t", lowMemoryMode ? "4" : "10", "--no-error"];
 
     return {
       executable: "gobuster",
       args,
-      opts: { timeoutMs: 300000 },
+      opts: { timeoutMs: lowMemoryMode ? 420000 : 300000 },
     };
   }
 
   if (scanType === "ratelimit") {
-    const scriptPath = path.join(process.cwd(), "src", "utils", "ratelimit-test.js");
+    const scriptPath = path.join(process.cwd(), "src", "utils", "ratelimit-test.py");
     return {
-      executable: "node",
+      executable: "python3",
       args: [scriptPath, finalUrl],
-      opts: { timeoutMs: 120000 },
+      opts: { timeoutMs: 180000 },
     };
   }
 
   if (scanType === "ffuf") {
     const wordlistPath = path.join(process.cwd(), "wordlist.txt");
-    const args = ["-u", `${finalUrl}/FUZZ`, "-w", wordlistPath, "-t", "20", "-c"];
+    const args = ["-u", `${finalUrl}/FUZZ`, "-w", wordlistPath, "-t", lowMemoryMode ? "4" : "10", "-c"];
     if (scanMode === "quick") args.push("-mc", "200,301");
     
     return {
       executable: "ffuf",
       args,
-      opts: { timeoutMs: 300000 },
+      opts: { timeoutMs: lowMemoryMode ? 420000 : 300000 },
     };
   }
 
   if (scanType === "wapiti") {
-    const args = ["-u", finalUrl, "-m", "common", "-n", "10"];
+    const args = ["-u", finalUrl, "-m", "common", "-n", lowMemoryMode ? "4" : "10"];
     if (scanMode === "full") args.push("--level", "1");
     
     return {
       executable: "wapiti",
       args,
-      opts: { timeoutMs: 600000 },
+      opts: { timeoutMs: lowMemoryMode ? 720000 : 600000 },
     };
   }
 
   if (scanType === "nuclei") {
-    const args = ["-u", finalUrl, "-silent", "-no-color"];
+    const args = ["-u", finalUrl, "-silent", "-no-color", "-c", lowMemoryMode ? "4" : "10", "-bs", lowMemoryMode ? "4" : "10"];
     if (scanMode === "quick") args.push("-tags", "cve,exposure");
     
     return {
       executable: "nuclei",
       args,
       // ✅ OPTIMIZED: Nuclei is now first tool, needs to be fast for auto-scan
-      opts: { timeoutMs: scanMode === "quick" ? 120000 : 600000 },
+      opts: { timeoutMs: scanMode === "quick" ? (lowMemoryMode ? 180000 : 120000) : (lowMemoryMode ? 900000 : 600000) },
     };
   }
 
