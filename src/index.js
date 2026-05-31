@@ -69,15 +69,23 @@ app.use((req, res, next) => {
   
   sanitize(req.body);
   sanitize(req.params);
-  // Sanitize req.query by creating a clean copy
-  if (req.query) {
-    const cleanQuery = {};
-    for (const key of Object.keys(req.query)) {
-      if (!key.startsWith('$') && !key.includes('.')) {
-        cleanQuery[key] = req.query[key];
+  // Sanitize req.query in-place where possible. Some environments expose
+  // `req.query` as a getter-only property; avoid assigning to it directly.
+  try {
+    const q = req.query;
+    if (q && typeof q === "object") {
+      for (const key of Object.keys(q)) {
+        if (key.startsWith("$") || key.includes(".")) {
+          try {
+            delete q[key];
+          } catch (e) {
+            // ignore - best effort
+          }
+        }
       }
     }
-    req.query = cleanQuery;
+  } catch (e) {
+    // Defensive: if reading req.query throws, ignore and continue
   }
   next();
 });
