@@ -68,6 +68,9 @@ app.use((req, res, next) => {
   };
   
   sanitize(req.body);
+      console.log(`[CORS Check] Origin: ${origin}`);
+      if (!origin) return callback(null, true);
+      if (allowAllCors) return callback(null, true);
   sanitize(req.params);
   // Sanitize req.query in-place where possible. Some environments expose
   // `req.query` as a getter-only property; avoid assigning to it directly.
@@ -147,6 +150,52 @@ const corsOptions = {
 app.use(cors(corsOptions));
 // Ensure preflight (OPTIONS) requests are handled for any path
 app.options("*", cors(corsOptions));
+
+// Request logger (minimal, avoid logging sensitive headers)
+app.use((req, res, next) => {
+  try {
+    const origin = req.headers && req.headers.origin;
+    const acrh = req.headers && req.headers["access-control-request-headers"];
+    console.log(`[REQ] ${req.method} ${req.originalUrl} Origin:${origin || '-'} ACRH:${acrh || '-'} `);
+  } catch (e) {
+    // ignore logging errors
+  }
+  next();
+});
+
+// Use CORS middleware, but also log preflight handling details so we can debug failures.
+app.options("*", (req, res) => {
+  // Run CORS middleware for preflight and then return a minimal 204.
+  try {
+    const origin = req.headers && req.headers.origin;
+    const acrh = req.headers && req.headers["access-control-request-headers"];
+    console.log(`[PREFLIGHT] ${req.method} ${req.originalUrl} Origin:${origin || '-'} ACRH:${acrh || '-'} `);
+    cors(corsOptions)(req, res, (err) => {
+      if (err) {
+        console.error("[PREFLIGHT][CORS] Error while handling preflight:", err && err.message ? err.message : err);
+        return res.status(500).json({ success: false, error: "CORS preflight error" });
+      }
+
+      // Log what CORS headers we are returning for debugging
+      try {
+        const returned = {
+          origin: res.getHeader("Access-Control-Allow-Origin") || null,
+          credentials: res.getHeader("Access-Control-Allow-Credentials") || null,
+          allowedHeaders: res.getHeader("Access-Control-Allow-Headers") || null,
+          methods: res.getHeader("Access-Control-Allow-Methods") || null,
+        };
+        console.log("[PREFLIGHT][CORS] Response headers:", returned);
+      } catch (e) {
+        // ignore
+      }
+
+      return res.status(204).end();
+    });
+  } catch (e) {
+    console.error("[PREFLIGHT] Unexpected error:", e && e.message ? e.message : e);
+    return res.status(500).end();
+  }
+});
 
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
