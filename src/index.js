@@ -145,7 +145,8 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.options("*path", cors(corsOptions));
+// Ensure preflight (OPTIONS) requests are handled for any path
+app.options("*", cors(corsOptions));
 
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
@@ -221,6 +222,16 @@ app.get("/", (req, res) => res.json({ message: "Vuln Spectra Backend server is r
 app.use((err, req, res, next) => {
   if (err instanceof URIError || (err && err.status === 400 && /decode param/i.test(err.message || ""))) {
     return res.status(400).json({ success: false, error: "Malformed request path" });
+  }
+  // Ensure CORS headers on error responses so browser preflights get a valid reply
+  try {
+    const origin = req.headers && req.headers.origin;
+    if (origin && isAllowedOrigin(origin)) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+    }
+  } catch (e) {
+    // ignore
   }
 
   console.error("Global error:", err);
