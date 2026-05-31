@@ -1,12 +1,13 @@
 import { User } from "../models/users-mongoose.js";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
+import { getAdminEmails } from "./admin-config.js";
 
 export async function seedAdmin() {
   try {
-    const adminEmails = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+    const adminEmails = getAdminEmails();
     if (adminEmails.length === 0) {
-      console.warn("[seed-admin] No ADMIN_EMAILS configured. Skipping admin seed.");
+      console.warn("[seed-admin] No ADMIN_EMAILS or ADMIN_EMAIL configured. Skipping admin seed.");
       return;
     }
 

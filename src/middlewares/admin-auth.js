@@ -1,4 +1,5 @@
 import { User } from '../models/users-mongoose.js';
+import { getAdminEmails } from '../utils/admin-config.js';
 
 export async function checkAdmin(req, res, next) {
   try {
@@ -28,7 +29,7 @@ export async function checkAdmin(req, res, next) {
     console.log(`[AdminCheck] User found: ${user.username}, Email: ${user.email}, Role: ${user.role}`);
 
     const dbRole = String(user.role || '').trim().toLowerCase();
-    const adminEmails = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+    const adminEmails = getAdminEmails();
     const isMasterAdmin = adminEmails.includes(user.email.toLowerCase());
 
     if (dbRole !== 'admin' && !isMasterAdmin) {

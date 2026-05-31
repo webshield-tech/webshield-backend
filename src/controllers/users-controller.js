@@ -7,6 +7,7 @@ import admin from "../config/firebase-admin.js";
 import { sendVerificationEmail } from "../utils/email-service.js";
 import crypto from "crypto";
 import { ensureDailyScanReset } from "../utils/daily-scan-reset.js";
+import { getAdminEmails } from "../utils/admin-config.js";
 
 export async function firebaseLogin(req, res) {
   try {
@@ -37,7 +38,7 @@ export async function firebaseLogin(req, res) {
         username,
         email,
         password: await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10), // Secure random password
-        role: (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).includes(email.toLowerCase()) ? "admin" : "user",
+        role: getAdminEmails().includes(email.toLowerCase()) ? "admin" : "user",
         scanLimit: 15,
         usedScan: 0,
         lastScanQuotaResetAt: new Date(),
@@ -144,7 +145,7 @@ export async function addUser(user) {
     username,
     email,
     password,
-    role: (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).includes(email.toLowerCase()) ? "admin" : "user",
+    role: getAdminEmails().includes(email.toLowerCase()) ? "admin" : "user",
     scanLimit: 10,
     usedScan: 0,
     lastIp,

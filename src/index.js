@@ -33,6 +33,22 @@ app.use(helmet({
   noSniff: true,
 }));
 
+// Reject malformed request targets before the router tries to decode them.
+app.use((req, res, next) => {
+  const requestTarget = String(req.originalUrl || req.url || "");
+  const pathOnly = requestTarget.split("?")[0];
+
+  try {
+    decodeURIComponent(pathOnly);
+    next();
+  } catch (error) {
+    if (error instanceof URIError) {
+      return res.status(400).json({ success: false, error: "Malformed request path" });
+    }
+    next(error);
+  }
+});
+
 // ✅ SECURITY FIX: Sanitize data to prevent NoSQL injection attacks
 // Use a custom sanitizer instead of default mongoSanitize which tries to modify read-only properties
 app.use((req, res, next) => {
@@ -180,6 +196,10 @@ app.get(`${apiBase}/`, (req, res) => {
 app.get("/", (req, res) => res.json({ message: "Vuln Spectra Backend server is running" }));
 
 app.use((err, req, res, next) => {
+  if (err instanceof URIError || (err && err.status === 400 && /decode param/i.test(err.message || ""))) {
+    return res.status(400).json({ success: false, error: "Malformed request path" });
+  }
+
   console.error("Global error:", err);
   res.status(500).json({ success: false, error: "Internal server error" });
 });

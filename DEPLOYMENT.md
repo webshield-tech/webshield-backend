@@ -54,6 +54,13 @@ JWT_SECRET=... (a random long string)
 GROQ_API=... (your Groq API key)
 FRONTEND_URL=https://your-frontend.vercel.app
 
+# Admin bootstrap (required for admin seeding / master admin access)
+ADMIN_EMAILS=admin@yourdomain.com,security@yourdomain.com
+# or a single email if you only need one admin
+# ADMIN_EMAIL=admin@yourdomain.com
+# Optional: password used for the first seeded admin login
+ADMIN_SEED_PASSWORD=...
+
 # Email settings (for password resets)
 EMAIL_USER=...
 EMAIL_PASS=...

@@ -4,6 +4,7 @@ export function parseNmap(rawOutput = "", target = "") {
     .split("\n")
     .map((l) => l.trim())
     .filter(Boolean);
+  const looksLikeNmap = /Nmap scan report for|Nmap done|Starting Nmap|Host is up|PORT\s+STATE\s+SERVICE/i.test(out);
 
   const openPorts = [];
   const filteredPorts = [];
@@ -72,8 +73,8 @@ export function parseNmap(rawOutput = "", target = "") {
   return {
     tool: "nmap",
     error: errorMsg,
-    success:
-      openPorts.length > 0 || cveList.length > 0 || vulnerabilities.length > 0,
+    success: looksLikeNmap || openPorts.length > 0 || cveList.length > 0 || vulnerabilities.length > 0,
+    ran: looksLikeNmap,
     openPorts,
     totalPorts: openPorts.length,
     filteredPorts,
@@ -512,8 +513,8 @@ export function parseGobuster(rawOutput = "", target = "") {
     }
   }
 
-  // Success = gobuster ran successfully (even if no results found)
-  const success = looksLikeGobuster && scanCompleted;
+  // Success means the tool actually ran, even if it found nothing.
+  const success = looksLikeGobuster || scanCompleted;
   
   return {
     tool: "gobuster",
@@ -576,6 +577,7 @@ export function parseFfuf(rawOutput = "", target = "") {
   const lines = rawOutput.split("\n");
   const findings = [];
   const protectedPaths = [];
+  const looksLikeFfuf = /FUZZ|ffuf|Starting|Progress|Status:/i.test(rawOutput);
 
   for (const line of lines) {
     const statusMatch = line.match(/\[Status:\s*(\d+)/);
@@ -590,10 +592,11 @@ export function parseFfuf(rawOutput = "", target = "") {
     }
   }
 
-  const success = findings.length > 0 || protectedPaths.length > 0;
+  const success = looksLikeFfuf || findings.length > 0 || protectedPaths.length > 0;
   return {
     tool: "ffuf",
     success,
+    ran: looksLikeFfuf,
     findings,
     protectedPaths,
     count: findings.length,
@@ -609,6 +612,7 @@ export function parseFfuf(rawOutput = "", target = "") {
 export function parseWapiti(rawOutput = "", target = "") {
   const vulnerabilities = [];
   let parsed = null;
+  const looksLikeWapiti = /\bWapiti\b/i.test(rawOutput) || /Attack finished|Starting Wapiti|Launching module/i.test(rawOutput);
 
   // Wapiti can output structured JSON when invoked with -f json
   try {
@@ -640,10 +644,12 @@ export function parseWapiti(rawOutput = "", target = "") {
     }
   }
 
-  const success = vulnerabilities.length > 0;
+  const success = looksLikeWapiti;
   return {
     tool: "wapiti",
     success,
+    ran: looksLikeWapiti,
+    completed: looksLikeWapiti,
     vulnerabilities,
     total: vulnerabilities.length,
     summary: success

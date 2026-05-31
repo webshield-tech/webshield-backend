@@ -142,6 +142,14 @@ export async function startProcess(scanId, executable, args = [], opts = {}) {
             // If there's significant output, treat as completed even if not parsed
             status = "completed";
           }
+        } else if (executable.includes("gobuster")) {
+          if (parsed.success || parsed.ran || out.length > 100) {
+            status = "completed";
+          }
+        } else if (executable.includes("wapiti")) {
+          if (parsed.success || parsed.ran || out.length > 100) {
+            status = "completed";
+          }
         }
 
         const existingScan = await Scan.findById(scanId).lean();

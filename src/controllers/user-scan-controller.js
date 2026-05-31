@@ -58,6 +58,7 @@ async function computeToolAvailability() {
 
   // Alias for scanType "ssl" used in auto scans
   byTool.ssl = byTool.sslscan === true;
+  byTool.sslscan = byTool.ssl === true;
 
   const nodeAvailable = await checkBinaryAvailable("node");
   const scriptChecks = {
@@ -556,8 +557,7 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
 
   if (scanType === "gobuster") {
     const wordlistPath = path.join(process.cwd(), "wordlist.txt");
-    const args = ["dir", "-u", finalUrl, "-w", wordlistPath, "-t", "20", "-z", "--no-error"];
-    if (scanMode === "quick") args.push("--limit", "50");
+    const args = ["dir", "-u", finalUrl, "-w", wordlistPath, "-t", "20", "--no-error"];
 
     return {
       executable: "gobuster",
