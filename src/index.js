@@ -157,7 +157,12 @@ app.use(globalLimiter);
 
 // CSRF protection removed - not needed for JWT Bearer token auth (tokens are not auto-sent by browsers)
 
-connectDB().then(() => {
+connectDB().then((connected) => {
+  if (!connected) {
+    console.error("Database connection failed. Exiting so the platform can restart the service.");
+    process.exit(1);
+  }
+
   seedAdmin();
 });
 
@@ -191,6 +196,16 @@ app.use(`${apiBase}/notifications`, notificationRouter);
 // Provide a health route at the api base so requests to `/api/v1/` return 200.
 app.get(`${apiBase}/`, (req, res) => {
   res.json({ message: "Vuln Spectra API base is reachable", base: apiBase });
+});
+
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    success: true,
+    status: "ok",
+    service: "vuln-spectra-backend",
+    base: apiBase,
+    uptime: process.uptime(),
+  });
 });
 
 app.get("/", (req, res) => res.json({ message: "Vuln Spectra Backend server is running" }));

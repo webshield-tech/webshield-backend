@@ -113,3 +113,7 @@ If you want to use a domain name (e.g., `api.vulnspectra.com`) or SSL (HTTPS):
 ---
 
 **✅ Your backend is now live!** Update your Vercel `VITE_API_URL` to point to your EC2 public IP or domain (e.g., `http://3.x.x.x:4000`).
+
+---
+
+<!-- Railway deployment notes removed per user request -->

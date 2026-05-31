@@ -458,8 +458,7 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
         hostname,
       ];
     } else {
-      // ✅ ULTRA-OPTIMIZED: Minimal nmap for auto-scan
-      // Only check if common web ports are open, no service detection
+      // Lightweight nmap for auto-scan on constrained hosts
       args = [
         "-Pn",
         "-p",
@@ -468,7 +467,8 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
         "0",
         "--host-timeout",
         "30s",
-        "-T5",
+        // Use moderately conservative timing to avoid CPU/memory spikes
+        "-T3",
         hostname,
       ];
     }
@@ -539,7 +539,7 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
 
     const level = scanMode === "full" ? "5" : "3";
     const risk  = scanMode === "full" ? "3" : "2";
-    const threadCount = lowMemoryMode ? "2" : "4";
+    const threadCount = lowMemoryMode ? "1" : "3";
 
     // Unique output dir per scan prevents cached "not injectable" sessions
     // from a previous run poisoning the results of this one.
@@ -583,12 +583,12 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
 
   if (scanType === "gobuster") {
     const wordlistPath = path.join(process.cwd(), "wordlist.txt");
-    const args = ["dir", "-u", finalUrl, "-w", wordlistPath, "-t", lowMemoryMode ? "4" : "10", "--no-error"];
+    const args = ["dir", "-u", finalUrl, "-w", wordlistPath, "-t", lowMemoryMode ? "2" : "5", "--no-error"];
 
     return {
       executable: "gobuster",
       args,
-      opts: { timeoutMs: lowMemoryMode ? 420000 : 300000 },
+      opts: { timeoutMs: lowMemoryMode ? 240000 : 300000 },
     };
   }
 
@@ -603,36 +603,36 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
 
   if (scanType === "ffuf") {
     const wordlistPath = path.join(process.cwd(), "wordlist.txt");
-    const args = ["-u", `${finalUrl}/FUZZ`, "-w", wordlistPath, "-t", lowMemoryMode ? "4" : "10", "-c"];
+    const args = ["-u", `${finalUrl}/FUZZ`, "-w", wordlistPath, "-t", lowMemoryMode ? "2" : "5", "-c"];
     if (scanMode === "quick") args.push("-mc", "200,301");
-    
+
     return {
       executable: "ffuf",
       args,
-      opts: { timeoutMs: lowMemoryMode ? 420000 : 300000 },
+      opts: { timeoutMs: lowMemoryMode ? 240000 : 300000 },
     };
   }
 
   if (scanType === "wapiti") {
-    const args = ["-u", finalUrl, "-m", "common", "-n", lowMemoryMode ? "4" : "10"];
+    const args = ["-u", finalUrl, "-m", "common", "-n", lowMemoryMode ? "2" : "6"];
     if (scanMode === "full") args.push("--level", "1");
     
     return {
       executable: "wapiti",
       args,
-      opts: { timeoutMs: lowMemoryMode ? 720000 : 600000 },
+      opts: { timeoutMs: lowMemoryMode ? 360000 : 600000 },
     };
   }
 
   if (scanType === "nuclei") {
-    const args = ["-u", finalUrl, "-silent", "-no-color", "-c", lowMemoryMode ? "4" : "10", "-bs", lowMemoryMode ? "4" : "10"];
+    const args = ["-u", finalUrl, "-silent", "-no-color", "-c", lowMemoryMode ? "2" : "6", "-bs", lowMemoryMode ? "2" : "6"];
     if (scanMode === "quick") args.push("-tags", "cve,exposure");
     
     return {
       executable: "nuclei",
       args,
       // ✅ OPTIMIZED: Nuclei is now first tool, needs to be fast for auto-scan
-      opts: { timeoutMs: scanMode === "quick" ? (lowMemoryMode ? 180000 : 120000) : (lowMemoryMode ? 900000 : 600000) },
+      opts: { timeoutMs: scanMode === "quick" ? (lowMemoryMode ? 120000 : 90000) : (lowMemoryMode ? 600000 : 300000) },
     };
   }
 
