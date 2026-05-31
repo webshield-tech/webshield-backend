@@ -121,7 +121,7 @@ export async function addUser(user) {
   if (!isEmailValid) {
     return {
       error:
-        "Please provide a valid, deliverable email address. Temporary/disposable emails are not allowed.",
+        "Please provide a valid email address. Temporary/disposable emails are not allowed.",
     };
   }
 
@@ -241,7 +241,24 @@ export async function checkUser(user) {
       };
     }
 
-    const isPasswordValid = await bcrypt.compare(password, userExists.password);
+    if (!userExists.password || typeof userExists.password !== "string") {
+      console.warn(`[AUTH] Missing password hash for user: ${identifier}`);
+      return {
+        success: false,
+        error: "This account does not have a password set. Use social login or reset the password.",
+      };
+    }
+
+    let isPasswordValid = false;
+    try {
+      isPasswordValid = await bcrypt.compare(password, userExists.password);
+    } catch (compareError) {
+      console.error(`[AUTH] Password comparison failed for ${identifier}:`, compareError?.message || compareError);
+      return {
+        success: false,
+        error: "Unable to verify password. Please reset your password and try again.",
+      };
+    }
 
     if (!isPasswordValid) {
       console.log(`[AUTH] PASSWORD MISMATCH for: ${identifier}`);
