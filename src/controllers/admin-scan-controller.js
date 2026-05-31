@@ -5,13 +5,25 @@ import { killProcess } from "../services/scan-runner.js";
 // ALL SCANS HISTORY FOR ADMIN 
 export async function getAllScanHistory(req, res) {
   try {
-    const allScans = await Scan.find({}).sort({ createdAt: -1 }).lean();
+    const limit = Math.min(parseInt(req.query.limit, 10) || 100, 1000);
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+
+    const [totalScans, scans] = await Promise.all([
+      Scan.countDocuments({}),
+      Scan.find({})
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+    ]);
 
     return res.json({
       success: true,
-      message: "All scan history retrieved",
-      totalScans: allScans.length,
-      scans: allScans,
+      message: "Scan history retrieved",
+      totalScans,
+      page,
+      limit,
+      scans,
     });
   } catch (error) {
     console.error("[admin] getAllScanHistory error:", error);

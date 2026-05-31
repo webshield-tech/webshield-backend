@@ -32,8 +32,8 @@ export function validateTargetHost(hostname) {
     };
   }
 
-  // Localhost is allowed for development/testing
-  if (["localhost", "127.0.0.1", "::1", "0.0.0.0"].includes(hostname)) {
+  // Localhost is only allowed in non-production environments
+  if (process.env.NODE_ENV !== "production" && ["localhost", "127.0.0.1", "::1"].includes(hostname)) {
     return { allowed: true };
   }
 

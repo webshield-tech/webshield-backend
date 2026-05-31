@@ -11,19 +11,35 @@ const bundledServiceAccountPath = path.join(__dirname, "serviceAccountKey.json")
 function getFirebaseCredential() {
   const rawJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   if (rawJson) {
-    return admin.credential.cert(JSON.parse(rawJson));
+    try {
+      const parsed = JSON.parse(rawJson);
+      return admin.credential.cert(parsed);
+    } catch (err) {
+      console.error('Invalid FIREBASE_SERVICE_ACCOUNT_JSON:', err.message);
+      return null;
+    }
   }
 
   const keyPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH || process.env.GOOGLE_APPLICATION_CREDENTIALS;
   if (keyPath && fs.existsSync(keyPath)) {
-    const fileData = JSON.parse(fs.readFileSync(keyPath, "utf-8"));
-    return admin.credential.cert(fileData);
+    try {
+      const fileData = JSON.parse(fs.readFileSync(keyPath, "utf-8"));
+      return admin.credential.cert(fileData);
+    } catch (err) {
+      console.error('Failed to parse Firebase service account file at', keyPath, err.message);
+      return null;
+    }
   }
 
   // Backward-compatible for local environments only.
   if (fs.existsSync(bundledServiceAccountPath)) {
-    const fileData = JSON.parse(fs.readFileSync(bundledServiceAccountPath, "utf-8"));
-    return admin.credential.cert(fileData);
+    try {
+      const fileData = JSON.parse(fs.readFileSync(bundledServiceAccountPath, "utf-8"));
+      return admin.credential.cert(fileData);
+    } catch (err) {
+      console.error('Failed to parse bundled Firebase service account:', err.message);
+      return null;
+    }
   }
 
   return null;

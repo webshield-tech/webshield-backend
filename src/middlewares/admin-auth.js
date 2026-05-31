@@ -20,25 +20,22 @@ export async function checkAdmin(req, res, next) {
       });
     }
 
+    if (user.isBlocked) {
+      console.warn(`[AdminCheck] Blocked user attempted admin access: ${userId}`);
+      return res.status(403).json({ error: 'Account is blocked' });
+    }
+
     console.log(`[AdminCheck] User found: ${user.username}, Email: ${user.email}, Role: ${user.role}`);
 
-    const tokenRole = String(req.user?.role || '').trim().toLowerCase();
     const dbRole = String(user.role || '').trim().toLowerCase();
-    const isRoleAdmin = tokenRole === 'admin' || tokenRole === 'superadmin' || dbRole === 'admin' || dbRole === 'superadmin';
-    const isMasterAdmin = user.email === 'admin@fsociety.com' || user.email === 'pkfsociety@gmail.com';
+    const adminEmails = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+    const isMasterAdmin = adminEmails.includes(user.email.toLowerCase());
 
-    if (!isRoleAdmin && !isMasterAdmin) {
+    if (dbRole !== 'admin' && !isMasterAdmin) {
       console.warn(`[AdminCheck] Access denied for user: ${user.username} (Role: ${user.role})`);
       return res.status(403).json({
         error: 'Admin access is required',
       });
-    }
-
-    // Force admin role if it's the master admin email but role is wrong in DB
-    if ((isMasterAdmin || tokenRole === 'admin' || tokenRole === 'superadmin') && dbRole !== 'admin') {
-       console.log(`[AdminCheck] Correcting role for master admin: ${user.email}`);
-       user.role = 'admin';
-       await user.save();
     }
 
     req.adminUser = user;

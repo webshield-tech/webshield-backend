@@ -111,15 +111,23 @@ export async function resetPassword(req, res) {
       });
     }
 
-    // CHECKING TOKEN IN DATABASE - ATOMIC CHECK AND MARK
+    // PASSWORD REGEX FOR NEW PASSWORD
+    const passwordRegex =
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>\/?])[A-Za-z\d!@#$%^&*()_+\-=[\]{};':"\\|,.<>\/?]{8,}$/;
+
+    if (!passwordRegex.test(newPassword)) {
+      return res.status(400).json({
+        success: false,
+        error:
+          "Password must contain: 8+ chars, uppercase, lowercase, number, special character",
+      });
+    }
+
+    // ATOMIC CHECK & MARK: Only mark token as used after password validation succeeds
     const resetRecord = await passReset.findOneAndUpdate(
-      {
-        token: token,
-        email: decoded.email,
-        used: false,
-      },
-      { used: true },
-      { new: false }
+      { token: token, email: decoded.email, used: false },
+      { used: true, usedAt: new Date() },
+      { new: true }
     );
 
     if (!resetRecord) {
@@ -130,35 +138,15 @@ export async function resetPassword(req, res) {
       });
     }
 
-    // PASSWORD REGEX FOR NEW PASSWORD
-    const passwordRegex =
-      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?])[A-Za-z\d!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]{8,}$/;
-
-    if (!passwordRegex.test(newPassword)) {
-      return res.status(400).json({
-        success: false,
-        error:
-          "Password must contain: 8+ chars, uppercase, lowercase, number, special character",
-      });
-    }
-
-// ENCRYPTING PASSWORD
-const salt = await bcrypt.genSalt(10);
-const hashedPassword = await bcrypt.hash(newPassword, salt);
+    // ENCRYPTING PASSWORD
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
 
     // UPDATING USER PASSWORD
-    await User.findOneAndUpdate(
-      { email: decoded.email },
-      { password: hashedPassword }
-    );
+    await User.findOneAndUpdate({ email: decoded.email }, { password: hashedPassword });
 
-    // Token already marked as used atomically above
     console.log(`Password reset successful for: ${decoded.email}`);
-    return res.json({
-      success: true,
-      message:
-        "Password reset successfully.  You can now login with new password.",
-    });
+    return res.json({ success: true, message: "Password reset successfully.  You can now login with new password." });
   } catch (error) {
     console.error("Reset password error:", error.message);
     return res.status(500).json({

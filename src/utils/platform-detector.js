@@ -1,7 +1,22 @@
-import { exec } from "child_process";
-import util from "util";
+import { spawn } from "child_process";
 
-const execPromise = util.promisify(exec);
+/**
+ * Run a command safely using spawn (no shell injection)
+ */
+function runCommand(command, args, timeoutMs = 15000) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(command, args, { timeout: timeoutMs });
+    let stdout = "";
+    let stderr = "";
+    proc.stdout.on("data", (d) => (stdout += d));
+    proc.stderr.on("data", (d) => (stderr += d));
+    proc.on("close", (code) => {
+      if (code === 0) resolve(stdout);
+      else reject(new Error(stderr || `Process exited with code ${code}`));
+    });
+    proc.on("error", reject);
+  });
+}
 
 /**
  * Robustly detect platform and OS of a target URL
@@ -15,7 +30,7 @@ export async function detectPlatform(url) {
 
   try {
     // 1. Get Headers
-    const { stdout: headers } = await execPromise(`curl -I -s -L --max-time 10 ${url}`);
+    const headers = await runCommand("curl", ["-I", "-s", "-L", "--max-time", "10", url]);
     const h = headers.toLowerCase();
 
     // Server Header
@@ -42,7 +57,7 @@ export async function detectPlatform(url) {
     else if (h.includes("netlify")) platform = "Netlify Platform";
     else if (h.includes("litespeed")) platform = "LiteSpeed Server";
     if (platform !== "Unknown") confidence += 0.2;
-    
+
     // Tech Stack
     if (h.includes("php")) tech.push("PHP");
     if (h.includes("asp.net") || h.includes("x-aspnet")) tech.push("ASP.NET");
@@ -55,7 +70,7 @@ export async function detectPlatform(url) {
     if (tech.length === 0) {
         // Try to find common paths
         try {
-            const { stdout: body } = await execPromise(`curl -s --max-time 5 ${url}`);
+            const body = await runCommand("curl", ["-s", "--max-time", "5", url]);
             if (body.includes("wp-content")) tech.push("WordPress");
             if (body.includes("_next/static")) tech.push("Next.js");
             if (body.includes("react")) tech.push("React");

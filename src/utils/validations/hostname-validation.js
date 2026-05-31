@@ -42,36 +42,28 @@ export function validateHostname(hostname, options = {}) {
     demoLoopbackHosts.has(hostname.toLowerCase());
 
   // Block internal/private IPs and localhost (unless explicitly enabled for local demo)
-  const blockedPatterns = [
-    'localhost',
-    '127.0.0.1',
-    'host.docker.internal',
-    '192.168.',
-    '10.',
-    '172.16.',
-    '172.17.',
-    '172.18.',
-    '172.19.',
-    '172.20.',
-    '172.21.',
-    '172.22.',
-    '172.23.',
-    '172.24.',
-    '172.25.',
-    '172.26.',
-    '172.27.',
-    '172.28.',
-    '172.29.',
-    '172.30.',
-    '172.31.'
-  ];
-  
+  const isIPv4 = ipv4Regex.test(hostname);
+
   if (!allowLocalTargets) {
-    for (const pattern of blockedPatterns) {
-      if (hostname.includes(pattern)) {
-        if (isDemoLoopbackTarget) {
-          return hostname;
-        }
+    const lowerHostname = hostname.toLowerCase();
+
+    // If it's an IP address, match known private ranges precisely
+    if (isIPv4) {
+      if (
+        lowerHostname.startsWith('10.') ||
+        lowerHostname.startsWith('192.168.') ||
+        /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(lowerHostname) ||
+        lowerHostname.startsWith('127.') ||
+        lowerHostname.startsWith('169.254.') ||
+        lowerHostname.startsWith('0.')
+      ) {
+        if (isDemoLoopbackTarget) return hostname;
+        throw new Error('Scanning internal networks is not allowed');
+      }
+    } else {
+      // For hostnames, only block exact local hostnames used for loopback or docker bridge
+      if (demoLoopbackHosts.has(lowerHostname)) {
+        if (isDemoLoopbackTarget) return hostname;
         throw new Error('Scanning internal networks is not allowed');
       }
     }

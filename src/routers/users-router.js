@@ -85,7 +85,6 @@ userRouter.post("/login", loginValidation, loginLimiter, async (req, res) => {
     res.json({
       success: true,
       message: "Logged in successfully",
-      token: response.token,
       user: {
         _id: response.user._id || response.user.userId,
         userId: response.user.userId || response.user._id,

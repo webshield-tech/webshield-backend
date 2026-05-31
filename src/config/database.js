@@ -1,6 +1,5 @@
 import mongoose from "mongoose";
 import { killAllProcesses } from "../services/scan-runner.js";
-
 export async function connectDB() {
   if (!process.env.DB_URL) {
     console.error("DB_URL not configured - skipping DB connect");
@@ -20,27 +19,30 @@ export async function connectDB() {
       console.warn("MongoDB disconnected");
     });
 
-    // Graceful shutdown
-    const shutdown = async () => {
-      console.log("SIGTERM/SIGINT received: shutting down gracefully");
-      try {
-        const killed = await killAllProcesses();
-        console.log(`Killed ${killed} running scan processes`);
-      } catch (e) {
-        console.error("Error while killing processes during shutdown:", e);
-      }
-      await mongoose.disconnect();
-      console.log("MongoDB disconnected, exiting");
-      process.exit(0);
-    };
-
-    process.on("SIGINT", shutdown);
-    process.on("SIGTERM", shutdown);
+    // Database initialized
+    console.log("Database initialized");
+    return true;
 
     console.log("Database initialized");
     return true;
   } catch (err) {
     console.error("Failed to connect to DB:", err);
     return false;
+  }
+}
+
+export async function closeDatabase() {
+  console.log("Closing database connection and cleaning up resources");
+  try {
+    const killed = await killAllProcesses();
+    console.log(`Killed ${killed} running scan processes`);
+  } catch (e) {
+    console.error("Error while killing processes during DB close:", e);
+  }
+  try {
+    await mongoose.disconnect();
+    console.log("MongoDB disconnected");
+  } catch (e) {
+    console.error("Error disconnecting MongoDB:", e);
   }
 }

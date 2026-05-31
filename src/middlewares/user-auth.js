@@ -22,12 +22,19 @@ export async function checkAuth(req, res, next) {
       return res.status(500).json({ success: false, error: "Server authentication is not configured" });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
     req.user = decoded;
     req.userId = decoded.userId || decoded.id || decoded._id;
 
     if (!req.userId) {
       return res.status(401).json({ success: false, error: "Invalid session token" });
+    }
+
+    // Check if user is blocked (fetch only isBlocked field for efficiency)
+    const { User } = await import('../models/users-mongoose.js');
+    const user = await User.findById(req.userId).select('isBlocked').lean();
+    if (user && user.isBlocked) {
+      return res.status(403).json({ success: false, error: "Your account has been blocked" });
     }
 
     next();

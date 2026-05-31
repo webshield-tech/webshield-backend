@@ -1,6 +1,6 @@
 import express from "express";
 import dotenv from "dotenv";
-import { connectDB } from "./config/database.js";
+import { connectDB, closeDatabase } from "./config/database.js";
 import userRouter from "./routers/users-router.js";
 import cookieParser from "cookie-parser";
 import scanRouter from "./routers/scans-router.js";
@@ -10,10 +10,10 @@ import dataRouter from "./routers/data-router.js";
 import notificationRouter from "./routers/notification-router.js";
 import rateLimit from "express-rate-limit";
 import { injectionDetector } from "./middlewares/security.js";
+import csrfProtectionMiddleware from "./middlewares/csrf-protection.js";
 import helmet from "helmet";
 import mongoSanitize from "express-mongo-sanitize";
 import cors from "cors";
-import { csrfProtectionMiddleware } from "./middlewares/csrf-protection.js";
 
 import { seedAdmin } from "./utils/seed-admin.js";
 import { killAllProcesses } from "./services/scan-runner.js";
@@ -53,7 +53,16 @@ app.use((req, res, next) => {
   
   sanitize(req.body);
   sanitize(req.params);
-  // Note: req.query is read-only, so we don't sanitize it directly
+  // Sanitize req.query by creating a clean copy
+  if (req.query) {
+    const cleanQuery = {};
+    for (const key of Object.keys(req.query)) {
+      if (!key.startsWith('$') && !key.includes('.')) {
+        cleanQuery[key] = req.query[key];
+      }
+    }
+    req.query = cleanQuery;
+  }
   next();
 });
 const configuredFrontendUrl = process.env.FRONTEND_URL;
@@ -118,6 +127,8 @@ app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 app.use(cookieParser());
 app.use(injectionDetector);
+// CSRF protection (double-submit cookie fallback). Middleware will skip unauthenticated requests.
+app.use(csrfProtectionMiddleware);
 
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -128,8 +139,7 @@ const globalLimiter = rateLimit({
 });
 app.use(globalLimiter);
 
-// ✅ SECURITY FIX: Add CSRF protection for state-changing requests
-app.use(csrfProtectionMiddleware);
+// CSRF protection removed - not needed for JWT Bearer token auth (tokens are not auto-sent by browsers)
 
 connectDB().then(() => {
   seedAdmin();
@@ -180,17 +190,21 @@ const server = app.listen(port, () => {
   console.log(`CORS allow all: ${allowAllCors ? "enabled" : "disabled"}`);
 });
 
-const gracefulShutdown = async (signal) => {
+const gracefulShutdown = async (signal, exitCode = 0) => {
   console.log(`${signal} signal received: closing HTTP server`);
-  await killAllProcesses();
+  try {
+    await closeDatabase();
+  } catch (e) {
+    console.error('Error during closeDatabase', e);
+  }
   server.close(() => {
     console.log("HTTP server closed");
-    process.exit(0);
+    process.exit(exitCode);
   });
 };
 
-process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
-process.on("SIGINT",  () => gracefulShutdown("SIGINT"));
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM", 0));
+process.on("SIGINT",  () => gracefulShutdown("SIGINT", 0));
 
 // ✅ SECURITY FIX: Handle unhandled promise rejections
 process.on("unhandledRejection", (reason, promise) => {
@@ -203,6 +217,6 @@ process.on("unhandledRejection", (reason, promise) => {
 process.on("uncaughtException", (error) => {
   console.error("[UNCAUGHT EXCEPTION]", error);
   // In production, send alert to monitoring system
-  // Exit gracefully
-  gracefulShutdown("UNCAUGHT EXCEPTION");
+  // Exit gracefully with non-zero code so PM2/containers detect crash
+  gracefulShutdown("UNCAUGHT EXCEPTION", 1);
 });

@@ -950,8 +950,16 @@ export async function startScan(req, res) {
     // Domain Blacklist Check - Protect major public infrastructure
     const hostname = new URL(finalUrl).hostname.toLowerCase();
     
-    // Explicitly allow localhost and local testing ips
-    const isLocal = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.') || hostname.startsWith('10.');
+    // Explicitly allow localhost and local testing ips - only consider IP prefixes for numeric IPs
+    const ipv4Regex = /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3}$/;
+    const isIPv4 = ipv4Regex.test(hostname);
+    const loopbackHosts = new Set(['localhost', '127.0.0.1', '::1', 'host.docker.internal']);
+    let isLocal = false;
+    if (isIPv4) {
+      isLocal = hostname.startsWith('127.') || hostname.startsWith('10.') || hostname.startsWith('192.168.');
+    } else {
+      isLocal = loopbackHosts.has(hostname.toLowerCase());
+    }
 
     // ✅ SECURITY FIX: SSRF Validation
     if (!isLocal) {

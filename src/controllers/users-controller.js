@@ -36,8 +36,8 @@ export async function firebaseLogin(req, res) {
       user = new User({
         username,
         email,
-        password: bcrypt.hashSync(Math.random().toString(36), 10), // Random password
-        role: (email === "admin@fsociety.com" || email === "pkfsociety@gmail.com") ? "admin" : "user",
+        password: await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10), // Secure random password
+        role: (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).includes(email.toLowerCase()) ? "admin" : "user",
         scanLimit: 15,
         usedScan: 0,
         lastScanQuotaResetAt: new Date(),
@@ -63,14 +63,19 @@ export async function firebaseLogin(req, res) {
     const platformToken = jwt.sign(
       { userId: user._id, role: user.role },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: "7d", algorithm: 'HS256' }
     );
 
     res.cookie("token", platformToken, getCookieOptions());
 
+    // Double-submit CSRF token (non-httpOnly cookie) for SPAs using cookie auth
+    const csrfToken = crypto.randomBytes(24).toString('hex');
+    const isProduction = process.env.NODE_ENV === 'production';
+    const xsrfOptions = { httpOnly: false, secure: isProduction, sameSite: isProduction ? 'none' : 'strict', path: '/', domain: process.env.COOKIE_DOMAIN || (isProduction ? '.webshield.tech' : undefined) };
+    res.cookie('XSRF-TOKEN', csrfToken, xsrfOptions);
+
     return res.json({
       success: true,
-      token: platformToken,
       user: {
         _id: user._id,
         userId: user._id,
@@ -98,7 +103,7 @@ export function getCookieOptions() {
   return {
     httpOnly: true,
     secure: isProduction || !!domain,
-    sameSite: "none", // Always use none for cross-site / cross-subdomain
+    sameSite: isProduction ? "none" : "strict",
     path: "/",
     domain: domain
   };
@@ -132,14 +137,14 @@ export async function addUser(user) {
     };
   }
 
-  const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+  const verificationCode = crypto.randomInt(100000, 999999).toString();
   const verificationCodeExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
 
   const newUser = await createUser({
     username,
     email,
     password,
-    role: (email === "admin@fsociety.com" || email === "pkfsociety@gmail.com") ? "admin" : "user",
+    role: (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).includes(email.toLowerCase()) ? "admin" : "user",
     scanLimit: 10,
     usedScan: 0,
     lastIp,
@@ -251,13 +256,11 @@ export async function checkUser(user) {
     console.log(`[AUTH] Login successful for: ${identifier}`);
     const token = jwt.sign(
       {
-        username: userExists.username,
-        email: userExists.email,
-        role: userExists.role,
         userId: userExists._id,
+        role: userExists.role,
       },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: "7d", algorithm: 'HS256' }
     );
 
     return {
@@ -315,13 +318,18 @@ export async function loginUser(req, res) {
 
     res.cookie("token", result.token, getCookieOptions());
 
+    // Set double-submit CSRF cookie
+    const csrfToken = crypto.randomBytes(24).toString('hex');
+    const isProduction = process.env.NODE_ENV === 'production';
+    const xsrfOptions = { httpOnly: false, secure: isProduction, sameSite: isProduction ? 'none' : 'strict', path: '/', domain: process.env.COOKIE_DOMAIN || (isProduction ? '.webshield.tech' : undefined) };
+    res.cookie('XSRF-TOKEN', csrfToken, xsrfOptions);
+
     console.log(" Login successful, cookie set for:", result.user.username);
 
     res.json({
       success: true,
       message: result.message,
       user: result.user,
-      token: result.token,
     });
   } catch (error) {
     console.error(" Login error:", error);
@@ -415,17 +423,20 @@ export async function verifyEmail(req, res) {
 
     // Generate token since they are now verified
     const token = jwt.sign(
-      { userId: user._id, role: user.role, username: user.username, email: user.email },
+      { userId: user._id, role: user.role },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: "7d", algorithm: 'HS256' }
     );
 
     res.cookie("token", token, getCookieOptions());
+    const csrfToken = crypto.randomBytes(24).toString('hex');
+    const isProduction = process.env.NODE_ENV === 'production';
+    const xsrfOptions = { httpOnly: false, secure: isProduction, sameSite: isProduction ? 'none' : 'strict', path: '/', domain: process.env.COOKIE_DOMAIN || (isProduction ? '.webshield.tech' : undefined) };
+    res.cookie('XSRF-TOKEN', csrfToken, xsrfOptions);
 
     return res.json({
       success: true,
       message: "Email verified successfully!",
-      token,
       user: {
         _id: user._id,
         username: user.username,
@@ -456,7 +467,7 @@ export async function resendVerificationCode(req, res) {
       return res.status(400).json({ success: false, error: "Account already verified" });
     }
 
-    const newCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const newCode = crypto.randomInt(100000, 999999).toString();
     user.verificationCode = newCode;
     user.verificationCodeExpires = new Date(Date.now() + 10 * 60 * 1000);
     await user.save();

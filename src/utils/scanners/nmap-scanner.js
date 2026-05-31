@@ -1,6 +1,4 @@
-import { promisify } from "util";
-import { exec } from "child_process";
-const execAsync = promisify(exec);
+import { spawn } from "child_process";
 
 function shouldEnableNmapOsDetection() {
   const forceEnable = String(process.env.NMAP_ENABLE_OS_DETECTION || "")
@@ -43,13 +41,25 @@ export async function scanWithNmap(targetUrl) {
     if (shouldEnableNmapOsDetection()) {
       osDetectionFlags = isRunningAsRoot() ? " -O" : " --privileged -O";
     }
-    const command = `timeout 180 nmap -Pn -T4 -sV -sC${osDetectionFlags} -v --top-ports 1000 --max-retries 1 --host-timeout 240s ${hostname}`;
+    // Build args array (no shell interpolation - prevents command injection)
+    const args = ['-Pn', '-T4', '-sV', '-sC'];
+    if (osDetectionFlags.trim()) args.push(...osDetectionFlags.trim().split(' '));
+    args.push('-v', '--top-ports', '1000', '--max-retries', '1', '--host-timeout', '240s', hostname);
 
-    console.log('Running Nmap command:', command);
+    console.log('Running Nmap with args:', args.join(' '));
 
-    // Execute Nmap scan
-    const { stdout, stderr } = await execAsync(command, {
-      maxBuffer: 1024 * 1024 * 10, 
+    // Execute Nmap scan safely using spawn
+    const { stdout } = await new Promise((resolve, reject) => {
+      const proc = spawn('nmap', args, { timeout: 180000 });
+      let stdout = '';
+      let stderr = '';
+      proc.stdout.on('data', (d) => (stdout += d));
+      proc.stderr.on('data', (d) => (stderr += d));
+      proc.on('close', (code) => {
+        if (code === 0 || stdout.length > 0) resolve({ stdout, stderr });
+        else reject(new Error(stderr || `Nmap exited with code ${code}`));
+      });
+      proc.on('error', reject);
     });
 
     console.log('Nmap scan completed.  Output length:', stdout.length);

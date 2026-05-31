@@ -1,2 +1,14 @@
 node_modules
 .env
+.env.*
+*.log
+logs/
+.DS_Store
+coverage/
+serviceAccountKey.json
+tmp/
+temp/
+.idea/
+.vscode/
+dist/
+build/

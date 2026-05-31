@@ -9,9 +9,9 @@ export const loginLimiter = rateLimit({
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
   skipSuccessfulRequests: true, // don't count successful logins
+  // Only skip rate limiting when explicitly requested via env var
   skip: (req) => {
-    // Skip rate limiting in development mode for easier testing
-    return process.env.NODE_ENV !== "production" && process.env.SKIP_RATE_LIMIT !== "false";
+    return String(process.env.SKIP_RATE_LIMIT || "").toLowerCase() === "true";
   },
   handler: (req, res /*, next */) => {
     return res.status(429).json({
@@ -34,9 +34,9 @@ export const scanLimiter = rateLimit({
     }
     return ipKeyGenerator(req);
   },
+  // Only skip rate limiting when explicitly requested via env var
   skip: (req) => {
-    // Skip rate limiting in development mode for easier testing
-    return process.env.NODE_ENV !== "production" && process.env.SKIP_RATE_LIMIT !== "false";
+    return String(process.env.SKIP_RATE_LIMIT || "").toLowerCase() === "true";
   },
   handler: (req, res /*, next */) => {
     return res.status(429).json({

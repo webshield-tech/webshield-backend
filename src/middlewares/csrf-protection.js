@@ -40,20 +40,26 @@ export const csrfProtectionMiddleware = (req, res, next) => {
     return next();
   }
 
-  // Get CSRF token from request (try multiple sources)
-  const token = 
-    req.body?.csrfToken ||
-    req.headers['x-csrf-token'] ||
-    req.query?.csrfToken;
-
-  // Validate token
-  if (!token || !req.session?.csrfToken || token !== req.session.csrfToken) {
-    console.warn(`[CSRF] Invalid or missing CSRF token for user ${req.userId}`);
-    return res.status(403).json({
-      success: false,
-      error: "Invalid CSRF token. Please refresh and try again.",
-    });
+  // First prefer session-based CSRF tokens if sessions are present
+  if (req.session && req.session.csrfToken) {
+    const token = req.body?.csrfToken || req.headers['x-csrf-token'] || req.query?.csrfToken;
+    if (!token || token !== req.session.csrfToken) {
+      console.warn(`[CSRF] Invalid or missing CSRF token for user ${req.userId} (session)`);
+      return res.status(403).json({ success: false, error: "Invalid CSRF token. Please refresh and try again." });
+    }
+    return next();
   }
+
+  // Fallback: double-submit cookie pattern
+  // Expect header 'x-csrf-token' to match cookie 'XSRF-TOKEN'
+  const headerToken = req.headers['x-csrf-token'];
+  const cookieToken = req.cookies && req.cookies['XSRF-TOKEN'];
+  if (!headerToken || !cookieToken || headerToken !== cookieToken) {
+    console.warn(`[CSRF] Double-submit token mismatch for user ${req.userId}`);
+    return res.status(403).json({ success: false, error: "Invalid CSRF token. Please refresh and try again." });
+  }
+
+  return next();
 
   next();
 };

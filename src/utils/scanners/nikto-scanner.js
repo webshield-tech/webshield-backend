@@ -1,7 +1,4 @@
-import { exec } from 'child_process';
-import { promisify } from 'util';
-
-const execAsync = promisify(exec);
+import { spawn } from 'child_process';
 
 export async function scanWithNikto(targetUrl) {
   try {
@@ -23,13 +20,24 @@ export async function scanWithNikto(targetUrl) {
 
     console.log('start scanning nikto for', hostname);
 
-    // USE ONLY -Tuning b 
-    const command = `timeout 180 nikto -h ${hostname} -port ${port}${useSsl ? ' -ssl' : ''} -Tuning b -maxtime 120s -nointeractive`;
+    // Build args array (no shell interpolation - prevents command injection)
+    const args = ['-h', hostname, '-port', String(port)];
+    if (useSsl) args.push('-ssl');
+    args.push('-Tuning', 'b', '-maxtime', '120s', '-nointeractive');
 
-    console.log('Running Nikto command:', command);
+    console.log('Running Nikto with args:', args.join(' '));
 
-    const { stdout, stderr } = await execAsync(command, {
-      maxBuffer: 1024 * 1024 * 10, 
+    const { stdout } = await new Promise((resolve, reject) => {
+      const proc = spawn('nikto', args, { timeout: 180000 });
+      let stdout = '';
+      let stderr = '';
+      proc.stdout.on('data', (d) => (stdout += d));
+      proc.stderr.on('data', (d) => (stderr += d));
+      proc.on('close', (code) => {
+        if (code === 0 || stdout.length > 0) resolve({ stdout, stderr });
+        else reject(new Error(stderr || `Nikto exited with code ${code}`));
+      });
+      proc.on('error', reject);
     });
 
     console.log('Nikto scan completed.  Output length:', stdout.length);

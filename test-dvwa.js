@@ -1,4 +1,4 @@
-const axios = require('axios');
+import axios from 'axios';
 
 function extractDvwaToken(html = "") {
   const match = String(html).match(/name=['"]user_token['"]\s+value=['"]([^'"]+)['"]/i);

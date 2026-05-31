@@ -4,13 +4,19 @@ import crypto from "crypto";
 
 export async function seedAdmin() {
   try {
-    const adminEmail = "admin@fsociety.com";
+    const adminEmails = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+    if (adminEmails.length === 0) {
+      console.warn("[seed-admin] No ADMIN_EMAILS configured. Skipping admin seed.");
+      return;
+    }
+
+    const primaryAdminEmail = adminEmails[0];
     const configuredAdminPassword = process.env.ADMIN_SEED_PASSWORD;
     const fallbackRandomPassword = crypto.randomBytes(24).toString("base64url");
     const adminPassword = configuredAdminPassword || fallbackRandomPassword;
-    
-    const existingAdmin = await User.findOne({ email: adminEmail });
-    
+
+    const existingAdmin = await User.findOne({ email: primaryAdminEmail });
+
     if (!existingAdmin) {
       if (!configuredAdminPassword) {
         console.warn(
@@ -19,8 +25,8 @@ export async function seedAdmin() {
       }
       const hashedPassword = await bcrypt.hash(adminPassword, 10);
       await User.create({
-        username: "fsociety_admin",
-        email: adminEmail,
+        username: "admin",
+        email: primaryAdminEmail,
         password: hashedPassword,
         role: "admin",
         agreedToTerms: true,
@@ -28,22 +34,23 @@ export async function seedAdmin() {
         scanLimit: 9999,
         isBlocked: false
       });
-      console.log("Admin account created: " + adminEmail);
+      console.log("Admin account created: " + primaryAdminEmail);
     } else {
-      // Ensure it has admin role and agreed to terms
       existingAdmin.role = "admin";
       existingAdmin.agreedToTerms = true;
       existingAdmin.isVerified = true;
       await existingAdmin.save();
-      console.log("Admin account verified: " + adminEmail);
+      console.log("Admin account verified: " + primaryAdminEmail);
     }
 
-    // Also ensure pkfsociety@gmail.com is an admin
-    const secondaryAdmin = await User.findOne({ email: "pkfsociety@gmail.com" });
-    if (secondaryAdmin) {
-      secondaryAdmin.role = "admin";
-      await secondaryAdmin.save();
-      console.log("Secondary admin verified: pkfsociety@gmail.com");
+    // Ensure all configured admin emails have admin role
+    for (const email of adminEmails.slice(1)) {
+      const adminUser = await User.findOne({ email });
+      if (adminUser && adminUser.role !== 'admin') {
+        adminUser.role = "admin";
+        await adminUser.save();
+        console.log("Admin verified: " + email);
+      }
     }
   } catch (error) {
     console.error("Error seeding admin:", error);
