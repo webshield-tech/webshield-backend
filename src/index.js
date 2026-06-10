@@ -100,6 +100,9 @@ const allowedOrigins = [
   "https://www.webshield.tech",
   "https://webshield.tech",
   "https://api.webshield.tech",
+  // DuckDNS backend URL — set via CORS_ALLOWED_ORIGINS env var on the server
+  // e.g. CORS_ALLOWED_ORIGINS=https://webshield-api.duckdns.org
+  process.env.DUCKDNS_URL || "",
   "https://webshield-frontend.vercel.app",
   "http://localhost:5173",
   "http://127.0.0.1:5173",
