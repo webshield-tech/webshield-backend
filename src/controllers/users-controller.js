@@ -72,7 +72,7 @@ export async function firebaseLogin(req, res) {
     // Double-submit CSRF token (non-httpOnly cookie) for SPAs using cookie auth
     const csrfToken = crypto.randomBytes(24).toString('hex');
     const isProduction = process.env.NODE_ENV === 'production';
-    const xsrfOptions = { httpOnly: false, secure: isProduction, sameSite: isProduction ? 'none' : 'strict', path: '/', domain: process.env.COOKIE_DOMAIN || (isProduction ? '.webshield.tech' : undefined) };
+    const xsrfOptions = { httpOnly: false, secure: isProduction, sameSite: isProduction ? 'none' : 'strict', path: '/', domain: process.env.COOKIE_DOMAIN || undefined };
     res.cookie('XSRF-TOKEN', csrfToken, xsrfOptions);
 
     return res.json({
@@ -98,8 +98,7 @@ export async function firebaseLogin(req, res) {
 
 export function getCookieOptions() {
   const isProduction = process.env.NODE_ENV === "production";
-  // Use .webshield.tech in prod to cover all subdomains
-  const domain = process.env.COOKIE_DOMAIN || (isProduction ? ".webshield.tech" : undefined);
+  const domain = process.env.COOKIE_DOMAIN || undefined;
   
   return {
     httpOnly: true,
@@ -339,7 +338,7 @@ export async function loginUser(req, res) {
     // Set double-submit CSRF cookie
     const csrfToken = crypto.randomBytes(24).toString('hex');
     const isProduction = process.env.NODE_ENV === 'production';
-    const xsrfOptions = { httpOnly: false, secure: isProduction, sameSite: isProduction ? 'none' : 'strict', path: '/', domain: process.env.COOKIE_DOMAIN || (isProduction ? '.webshield.tech' : undefined) };
+    const xsrfOptions = { httpOnly: false, secure: isProduction, sameSite: isProduction ? 'none' : 'strict', path: '/', domain: process.env.COOKIE_DOMAIN || undefined };
     res.cookie('XSRF-TOKEN', csrfToken, xsrfOptions);
 
     console.log(" Login successful, cookie set for:", result.user.username);
@@ -449,7 +448,7 @@ export async function verifyEmail(req, res) {
     res.cookie("token", token, getCookieOptions());
     const csrfToken = crypto.randomBytes(24).toString('hex');
     const isProduction = process.env.NODE_ENV === 'production';
-    const xsrfOptions = { httpOnly: false, secure: isProduction, sameSite: isProduction ? 'none' : 'strict', path: '/', domain: process.env.COOKIE_DOMAIN || (isProduction ? '.webshield.tech' : undefined) };
+    const xsrfOptions = { httpOnly: false, secure: isProduction, sameSite: isProduction ? 'none' : 'strict', path: '/', domain: process.env.COOKIE_DOMAIN || undefined };
     res.cookie('XSRF-TOKEN', csrfToken, xsrfOptions);
 
     return res.json({
