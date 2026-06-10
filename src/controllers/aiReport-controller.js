@@ -245,8 +245,8 @@ async function ensureReportForLanguage(scan, language) {
  */
 function buildStructuredScanInput(scans) {
   const target = scans[0]?.targetUrl || 'unknown';
-  const rawScanMode = scans[0]?.results?.scanMode || 'quick';
-  const scanType = rawScanMode === 'full' ? 'deep' : 'quick';
+  const rawScanMode = scans[0]?.results?.scanMode || 'medium';
+  const scanType = rawScanMode === 'full' ? 'deep' : 'medium';
 
   // Gather platform / tech stack info from whichever scan captured it
   const platform =

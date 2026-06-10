@@ -8,7 +8,8 @@ import authRouter from "./routers/auth-router.js";
 import adminRouter from "./routers/admin-router.js";
 import dataRouter from "./routers/data-router.js";
 import notificationRouter from "./routers/notification-router.js";
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
+import jwt from "jsonwebtoken";
 import { injectionDetector } from "./middlewares/security.js";
 import csrfProtectionMiddleware from "./middlewares/csrf-protection.js";
 import helmet from "helmet";
@@ -179,10 +180,29 @@ app.use(csrfProtectionMiddleware);
 
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 300,
+  // Increase global allowance slightly and use per-user key when possible to avoid IP NAT collisions.
+  max: 600,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { success: false, error: "Too many requests from this IP. Please try again after 15 minutes." },
+  // Use user id from JWT (if present) as the rate-limit key so authenticated users are not blocked by other IP traffic.
+  keyGenerator: (req) => {
+    try {
+      const auth = req.headers && req.headers.authorization;
+      let token = null;
+      if (auth && auth.startsWith("Bearer ")) token = auth.split(" ")[1];
+      if (!token && req.cookies && req.cookies.token) token = req.cookies.token;
+      if (token) {
+        // jwt.decode does not verify signature but is sufficient for extracting the user id for throttling purposes
+        const payload = jwt.decode(token);
+        const userId = payload && (payload.userId || payload.id || payload._id);
+        if (userId) return `user_${String(userId)}`;
+      }
+    } catch (e) {
+      // fallback to IP
+    }
+    return ipKeyGenerator(req);
+  },
+  message: { success: false, error: "Too many requests. Please try again after 15 minutes." },
 });
 app.use(globalLimiter);
 

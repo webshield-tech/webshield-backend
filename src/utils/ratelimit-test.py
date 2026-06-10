@@ -18,7 +18,11 @@ USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15",
 ]
 
-COMMON_ENDPOINTS = ["/", "/api", "/api/v1", "/graphql", "/login", "/auth", "/admin", "/health", "/status"]
+COMMON_ENDPOINTS = ["/", "/api", "/login", "/auth", "/health"]
+
+# Conservative burst settings to avoid overloading the user's EC2 instance or target
+DEFAULT_BURST_COUNT = 20
+DEFAULT_MAX_WORKERS = 6
 
 
 def normalize_url(raw_url: str) -> str:
@@ -124,7 +128,8 @@ def main() -> int:
 
     print("[BURST_TEST] Launching adaptive concurrent requests to test rate limiting...")
 
-    request_count = 60
+    # Use conservative defaults defined above
+    request_count = DEFAULT_BURST_COUNT
     burst_url = f"{base_url}/"
     request_headers = {"User-Agent": random.choice(USER_AGENTS), "Accept": "*/*"}
 
@@ -134,7 +139,7 @@ def main() -> int:
         return make_request(burst_url, "GET", local_headers, timeout=8)
 
     start = time.perf_counter()
-    with concurrent.futures.ThreadPoolExecutor(max_workers=12) as pool:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=DEFAULT_MAX_WORKERS) as pool:
         results = list(pool.map(worker, range(request_count)))
     duration = int((time.perf_counter() - start) * 1000)
 
