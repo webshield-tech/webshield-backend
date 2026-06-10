@@ -632,72 +632,6 @@ export function parseWapiti(rawOutput = "", target = "") {
             level: item.level ?? 1,
           });
         }
-
-        export function parseWhois(rawOutput = "", target = "") {
-          const out = String(rawOutput || "");
-          const lines = out.split("\n").map((line) => line.trim()).filter(Boolean);
-
-          const fields = {};
-          const nameServers = new Set();
-          const registrants = [];
-          const rawNotes = [];
-
-          const takeField = (key, value) => {
-            if (!value) return;
-            if (!fields[key]) fields[key] = value.trim();
-          };
-
-          for (const line of lines) {
-            const lower = line.toLowerCase();
-
-            if (/^domain name:/i.test(line)) takeField("domainName", line.split(/:\s*/).slice(1).join(": "));
-            if (/^registrar:/i.test(line)) takeField("registrar", line.split(/:\s*/).slice(1).join(": "));
-            if (/^registry domain id:/i.test(line)) takeField("registryDomainId", line.split(/:\s*/).slice(1).join(": "));
-            if (/^creation date:/i.test(line) || /^created on:/i.test(line)) takeField("creationDate", line.split(/:\s*/).slice(1).join(": "));
-            if (/^registry expiry date:/i.test(line) || /^expiry date:/i.test(line) || /^expiration date:/i.test(line)) {
-              takeField("expiryDate", line.split(/:\s*/).slice(1).join(": "));
-            }
-            if (/^updated date:/i.test(line) || /^updated on:/i.test(line)) takeField("updatedDate", line.split(/:\s*/).slice(1).join(": "));
-            if (/^name server:/i.test(line) || /^nserver:/i.test(line)) {
-              const value = line.split(/:\s*/).slice(1).join(": ").trim();
-              if (value) nameServers.add(value.toLowerCase());
-            }
-            if (/^status:/i.test(line)) {
-              rawNotes.push(line);
-            }
-            if (/^org:/i.test(line) || /^organization:/i.test(line) || /^registrant:/i.test(line)) {
-              const value = line.split(/:\s*/).slice(1).join(": ").trim();
-              if (value) registrants.push(value);
-            }
-            if (/privacy|redacted|whois privacy|protected by/i.test(lower)) {
-              rawNotes.push(line);
-            }
-          }
-
-          const hasOutput = lines.length > 0;
-          const success = hasOutput && !/no whois server|query timed out|not found|connection refused|no match/i.test(out);
-
-          return {
-            tool: "whois",
-            success,
-            ran: hasOutput,
-            query: target,
-            domainName: fields.domainName || null,
-            registrar: fields.registrar || null,
-            registryDomainId: fields.registryDomainId || null,
-            creationDate: fields.creationDate || null,
-            expiryDate: fields.expiryDate || null,
-            updatedDate: fields.updatedDate || null,
-            nameServers: Array.from(nameServers),
-            registrants: Array.from(new Set(registrants)),
-            notes: rawNotes.slice(0, 100),
-            summary: success
-              ? `WHOIS lookup completed for ${target}`
-              : `WHOIS lookup returned no usable data for ${target}`,
-            rawOutput: out,
-            target,
-          };
-        }
       }
     }
   } else {
@@ -757,6 +691,72 @@ export function parseDns(rawOutput = "", target = "") {
       target
     };
   }
+}
+
+export function parseWhois(rawOutput = "", target = "") {
+  const out = String(rawOutput || "");
+  const lines = out.split("\n").map((line) => line.trim()).filter(Boolean);
+
+  const fields = {};
+  const nameServers = new Set();
+  const registrants = [];
+  const rawNotes = [];
+
+  const takeField = (key, value) => {
+    if (!value) return;
+    if (!fields[key]) fields[key] = value.trim();
+  };
+
+  for (const line of lines) {
+    const lower = line.toLowerCase();
+
+    if (/^domain name:/i.test(line)) takeField("domainName", line.split(/:\s*/).slice(1).join(": "));
+    if (/^registrar:/i.test(line)) takeField("registrar", line.split(/:\s*/).slice(1).join(": "));
+    if (/^registry domain id:/i.test(line)) takeField("registryDomainId", line.split(/:\s*/).slice(1).join(": "));
+    if (/^creation date:/i.test(line) || /^created on:/i.test(line)) takeField("creationDate", line.split(/:\s*/).slice(1).join(": "));
+    if (/^registry expiry date:/i.test(line) || /^expiry date:/i.test(line) || /^expiration date:/i.test(line)) {
+      takeField("expiryDate", line.split(/:\s*/).slice(1).join(": "));
+    }
+    if (/^updated date:/i.test(line) || /^updated on:/i.test(line)) takeField("updatedDate", line.split(/:\s*/).slice(1).join(": "));
+    if (/^name server:/i.test(line) || /^nserver:/i.test(line)) {
+      const value = line.split(/:\s*/).slice(1).join(": ").trim();
+      if (value) nameServers.add(value.toLowerCase());
+    }
+    if (/^status:/i.test(line)) {
+      rawNotes.push(line);
+    }
+    if (/^org:/i.test(line) || /^organization:/i.test(line) || /^registrant:/i.test(line)) {
+      const value = line.split(/:\s*/).slice(1).join(": ").trim();
+      if (value) registrants.push(value);
+    }
+    if (/privacy|redacted|whois privacy|protected by/i.test(lower)) {
+      rawNotes.push(line);
+    }
+  }
+
+  const hasOutput = lines.length > 0;
+  const success = hasOutput && !/no whois server|query timed out|not found|connection refused|no match/i.test(out);
+
+  return {
+    tool: "whois",
+    success,
+    ran: hasOutput,
+    query: target,
+    domainName: fields.domainName || null,
+    registrar: fields.registrar || null,
+    registryDomainId: fields.registryDomainId || null,
+    creationDate: fields.creationDate || null,
+    expiryDate: fields.expiryDate || null,
+    updatedDate: fields.updatedDate || null,
+    nameServers: Array.from(nameServers),
+    registrants: Array.from(new Set(registrants)),
+    notes: rawNotes.slice(0, 100),
+    summary: success
+      ? `WHOIS lookup completed for ${target}`
+      : `WHOIS lookup returned no usable data for ${target}`,
+    rawOutput: out,
+    target,
+  };
 }
 
 export function parseXss(rawOutput = "", target = "") {
