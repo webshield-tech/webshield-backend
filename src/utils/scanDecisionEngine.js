@@ -60,12 +60,15 @@ export function decideScanPlan(reconData, scanMode = 'medium') {
 
   // 5. Input-aware web app checks
   // SQLMap and Wapiti are only useful when the app shows signs of backend or forms.
+  // Heuristic: if forms exist AND DB indicators (WhatWeb or open DB ports) are present => enable sqlmap with high confidence.
+  const dbHints = Array.isArray(reconData.dbIndicators) ? reconData.dbIndicators : [];
+
   if (reconData.isStaticFrontend) {
     setDecision('sqlmap', 'skip', 'Static frontend detected (no backend database)', 0.95, evidence.htmlIndicators);
 
     if (reconData.hasInputForms || reconData.hasLoginForm) {
-    if (normalizedMode === 'medium') {
-      setDecision('wapiti', 'skip', 'Static frontend forms detected, but heavy form crawling is skipped in Medium Scan mode', 0.9, evidence.htmlIndicators);
+      if (normalizedMode === 'medium') {
+        setDecision('wapiti', 'skip', 'Static frontend forms detected, but heavy form crawling is skipped in Medium Scan mode', 0.9, evidence.htmlIndicators);
       } else {
         setDecision('wapiti', 'run', 'Static frontend has forms, so form-aware checks are still useful', 0.85, evidence.htmlIndicators);
       }
@@ -73,7 +76,14 @@ export function decideScanPlan(reconData, scanMode = 'medium') {
       setDecision('wapiti', 'skip', 'Static frontend detected (no forms to test)', 0.95, evidence.htmlIndicators);
     }
   } else if (reconData.hasInputForms || reconData.hasLoginForm) {
-    setDecision('sqlmap', 'run', 'Input forms detected on target', 0.9, [`Forms counted: ${evidence.formCount}`]);
+    // If DB hints are present, mark SQLMap as high confidence run
+    if (dbHints.length > 0) {
+      setDecision('sqlmap', 'run', 'Forms + DB indicators detected (WhatWeb/ports) — enabling SQLMap', 0.95, [`Forms counted: ${evidence.formCount}`, `DB hints: ${dbHints.join(', ')}`]);
+    } else {
+      // No explicit DB hints — still consider running SQLMap but with slightly less confidence
+      setDecision('sqlmap', 'run', 'Input forms detected on target (no explicit DB hints)', 0.8, [`Forms counted: ${evidence.formCount}`]);
+    }
+
     if (normalizedMode === 'medium') {
       setDecision('wapiti', 'skip', 'Heavy payload scanner skipped in Medium Scan mode', 0.9);
     } else {

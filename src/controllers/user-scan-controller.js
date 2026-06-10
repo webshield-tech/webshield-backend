@@ -74,6 +74,7 @@ async function computeToolAvailability() {
     wapiti: "wapiti",
     nuclei: "nuclei",
     whois: "whois",
+    whatweb: "whatweb",
   };
 
   for (const [tool, bin] of Object.entries(binaryChecks)) {
@@ -1566,6 +1567,8 @@ export async function detectWebsite(req, res) {
         isStaticFrontend: reconData.isStaticFrontend,
         platform: reconData.platform,
         technologies: reconData.technologies,
+        dbIndicators: reconData.dbIndicators || [],
+        hasDatabase: Boolean(reconData.hasDatabase),
         evidence: reconData.evidence,
       },
       quickPlan: { run: quickPlan.run, skip: quickPlan.skip, details: quickPlan.details },
