@@ -32,13 +32,42 @@ export async function extractReconData(targetUrl) {
     const httpsAgent = new https.Agent({ rejectUnauthorized: false });
     
     console.log(`[Recon] Starting scout phase for ${targetUrl}`);
-    const response = await axios.get(targetUrl, {
-      httpsAgent,
-      timeout: timeoutMs,
-      maxRedirects: 3,
-    });
+    let response;
+    try {
+      response = await axios.get(targetUrl, {
+        httpsAgent,
+        timeout: timeoutMs,
+        maxRedirects: 3,
+        headers: { 'User-Agent': process.env.RECON_USER_AGENT || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36' }
+      });
+      reconData.isAlive = true;
+    } catch (initialErr) {
+      // If the site blocks default requests (403), try again with a browser-like UA and relaxed timeouts.
+      const status = initialErr?.response?.status;
+      if (status === 403 || status === 401) {
+        try {
+          response = await axios.get(targetUrl, {
+            httpsAgent,
+            timeout: timeoutMs * 1.5,
+            maxRedirects: 5,
+            headers: { 'User-Agent': process.env.RECON_USER_AGENT_FALLBACK || 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.6 Safari/605.1.15' }
+          });
+          reconData.isAlive = true;
+          reconData.evidence.htmlIndicators.push(`Initial request returned ${status}; fallback UA succeeded`);
+        } catch (fallbackErr) {
+          console.warn(`[Recon] Failed to extract data from ${targetUrl}:`, initialErr?.message || initialErr);
+          // Keep going — some targets actively block HTTP probes; leave isAlive=false and try passive probes below.
+        }
+      } else {
+        console.warn(`[Recon] Failed to extract data from ${targetUrl}:`, initialErr?.message || initialErr);
+      }
+    }
 
-    reconData.isAlive = true;
+    if (!response) {
+      // Response could not be obtained; continue but mark isAlive false
+      // We still attempt passive detection (whatweb, nmap) below when possible
+      response = { data: '', headers: {} };
+    }
 
     // 1. Analyze HTML
     const $ = cheerio.load(response.data);
@@ -72,7 +101,8 @@ export async function extractReconData(targetUrl) {
     // Try to enrich with WhatWeb (conservative aggression). Not fatal if missing.
     let whatwebTechs = [];
     try {
-      const ww = await runWhatWeb(targetUrl, Number(process.env.WHATWEB_TIMEOUT_MS || 8000));
+      const ua = process.env.RECON_USER_AGENT || process.env.RECON_USER_AGENT_FALLBACK || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36';
+      const ww = await runWhatWeb(targetUrl, Number(process.env.WHATWEB_TIMEOUT_MS || 8000), ua);
       if (ww && Array.isArray(ww.techs) && ww.techs.length) {
         whatwebTechs = ww.techs.map((t) => String(t).toLowerCase());
         reconData.technologies.push(...whatwebTechs);

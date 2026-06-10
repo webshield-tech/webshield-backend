@@ -5,12 +5,14 @@ import { spawn } from 'child_process';
  * Uses spawn with args (no shell) to avoid injection. Returns an object with
  * techs: array of detected keywords and rawOutput: captured stdout/stderr.
  */
-export function runWhatWeb(targetUrl, timeoutMs = 10000) {
+export function runWhatWeb(targetUrl, timeoutMs = 10000, userAgent = null) {
   return new Promise((resolve) => {
     try {
       const aggression = String(process.env.WHATWEB_AGGRESSION || '2');
       // aggression: 1-5; default 2 (conservative but thorough)
-      const args = ['--no-errors', '-a', aggression, '--log-json', '-', targetUrl];
+      const args = ['--no-errors', '-a', aggression, '--log-json', '-'];
+      if (userAgent) args.push('--user-agent', String(userAgent));
+      args.push(targetUrl);
       const child = spawn('whatweb', args, { stdio: ['ignore', 'pipe', 'pipe'] });
       let stdout = '';
       let stderr = '';
