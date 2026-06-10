@@ -690,13 +690,6 @@ async function launchScanInBackground(scanId, finalUrl, scanType, cookies = "", 
     }
 
     console.log(`[SCAN_SERVICE] Starting ${scanType} scan (Mode: ${scanMode}) for: ${finalUrl} (ID: ${scanId})`);
-  try {
-    if (hasProcess(scanId)) {
-      return { success: false, error: "Already running" };
-    }
-
-    console.log(`[SCAN_SERVICE] Starting ${scanType} scan (Mode: ${scanMode}) for: ${finalUrl} (ID: ${scanId})`);
-
     // ROBUST PLATFORM DETECTION
     try {
       const detection = await detectPlatform(finalUrl);
