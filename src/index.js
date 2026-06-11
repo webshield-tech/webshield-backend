@@ -1,5 +1,6 @@
 import express from "express";
 import dotenv from "dotenv";
+dotenv.config({ path: ".env.local" });
 import { connectDB, closeDatabase } from "./config/database.js";
 import userRouter from "./routers/users-router.js";
 import cookieParser from "cookie-parser";
