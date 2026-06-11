@@ -74,6 +74,7 @@ async function computeToolAvailability() {
     wapiti: "wapiti",
     nuclei: "nuclei",
     whois: "whois",
+    whatweb: "whatweb",
   };
 
   for (const [tool, bin] of Object.entries(binaryChecks)) {
@@ -454,13 +455,15 @@ function isRunningAsRoot() {
   return false;
 }
 
-async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quick", sqlmapUrl = "") {
+async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "medium", sqlmapUrl = "") {
+  // Normalize to either 'full' or 'medium' (treat anything else as medium)
+  const mode = scanMode === "full" ? "full" : "medium";
   const hostname = resolveHostname(finalUrl);
   const lowMemoryMode = isLowMemoryMode();
 
   if (scanType === "nmap") {
     let args = [];
-    if (scanMode === "full") {
+    if (mode === "full") {
       args = [
         "-p-",
         "-sV",
@@ -475,22 +478,22 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
         hostname,
       ];
     } else {
-      // Lightweight nmap for auto-scan on constrained hosts
+      // Medium nmap profile: broader than a tiny quick scan but constrained for low-memory hosts
       args = [
         "-Pn",
         "-p",
-        "80,443",
+        "1-1024",
         "--max-retries",
-        "0",
+        "1",
         "--host-timeout",
-        "30s",
-        // Use moderately conservative timing to avoid CPU/memory spikes
-        "-T3",
+        "120s",
+        // Moderate timing for reasonable speed without overwhelming CPU
+        "-T4",
         hostname,
       ];
     }
 
-    if (shouldEnableNmapOsDetection() && scanMode === "full") {
+    if (shouldEnableNmapOsDetection() && mode === "full") {
       const osFlags = isRunningAsRoot() ? ["-O"] : ["--privileged", "-O"];
       args.splice(args.indexOf("-sV"), 0, ...osFlags);
     }
@@ -498,8 +501,8 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
     return {
       executable: "nmap",
       args,
-      // ✅ ULTRA-OPTIMIZED: Much shorter timeout for auto-scan (30s for quick, 15min for full)
-      opts: { timeoutMs: scanMode === "full" ? 900000 : 30000, maxRaw: 300000 },
+      // Timeouts scaled for medium vs full
+      opts: { timeoutMs: mode === "full" ? 900000 : 120000, maxRaw: 300000 },
     };
   }
 
@@ -508,28 +511,30 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
     const niktoUrl = finalUrl.replace(/^https?:\/\/localhost(:\d+)?/i, (match, port) => {
       return match.replace("localhost", "127.0.0.1");
     });
-    let args = ["-h", niktoUrl, "-maxtime", scanMode === "full" ? "300s" : "120s", "-nointeractive"];
-    if (scanMode === "quick") {
-      args.push("-Tuning", "b");
+    const maxtime = mode === "full" ? "300s" : "180s";
+    const args = ["-h", niktoUrl, "-maxtime", maxtime, "-nointeractive"];
+    if (mode === "medium") {
+      // include a bit more tuning for medium scans
+      args.push("-Tuning", "b,c");
     }
     return {
       executable: "nikto",
       args,
-      opts: { timeoutMs: scanMode === "full" ? 360000 : 180000 },
+      opts: { timeoutMs: mode === "full" ? 360000 : 240000 },
     };
   }
 
   if (scanType === "ssl") {
     const sslArgs =
-      scanMode === "full"
+      mode === "full"
         ? ["--no-colour", "--show-certificate", "--heartbleed", resolveSslTarget(finalUrl)]
-        : ["--no-colour", resolveSslTarget(finalUrl)];
+        : ["--no-colour", "--show-certificate", resolveSslTarget(finalUrl)];
 
     return {
       executable: "sslscan",
       args: sslArgs,
-      // ✅ OPTIMIZED: Reduce SSL timeout for quick auto-scan
-      opts: { timeoutMs: scanMode === "quick" ? 60000 : 120000, maxRaw: 200000 },
+      // Timeouts: medium shorter than full
+      opts: { timeoutMs: mode === "full" ? 120000 : 90000, maxRaw: 200000 },
     };
   }
 
@@ -554,9 +559,9 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
       }
     }
 
-    const level = scanMode === "full" ? "5" : "3";
-    const risk  = scanMode === "full" ? "3" : "2";
-    const threadCount = lowMemoryMode ? "1" : "3";
+    const level = mode === "full" ? "5" : "4"; // medium uses level 4
+    const risk  = mode === "full" ? "3" : "2";
+    const threadCount = lowMemoryMode ? "1" : "2";
 
     // Unique output dir per scan prevents cached "not injectable" sessions
     // from a previous run poisoning the results of this one.
@@ -577,11 +582,11 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
       "--output-dir", outputDir,
     ];
 
-    if (scanMode === "full") {
+    if (mode === "full") {
       args.push("--dump-all");
       if (!sqlmapTarget.includes("?")) args.push("--forms", "--crawl", "3");
     } else {
-      if (!sqlmapTarget.includes("?")) args.push("--forms", "--crawl", "1");
+      if (!sqlmapTarget.includes("?")) args.push("--forms", "--crawl", "2");
     }
 
     if (sqlmapCookies) {
@@ -592,7 +597,7 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
       executable: "sqlmap",
       args,
       opts: {
-        timeoutMs: scanMode === "full" ? 600000 : 240000,
+        timeoutMs: mode === "full" ? 600000 : 360000,
         maxRaw: 500000,
       },
     };
@@ -600,12 +605,13 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
 
   if (scanType === "gobuster") {
     const wordlistPath = path.join(process.cwd(), "wordlist.txt");
-    const args = ["dir", "-u", finalUrl, "-w", wordlistPath, "-t", lowMemoryMode ? "2" : "5", "--no-error"];
+    const threads = lowMemoryMode ? "2" : "10";
+    const args = ["dir", "-u", finalUrl, "-w", wordlistPath, "-t", threads, "--no-error"];
 
     return {
       executable: "gobuster",
       args,
-      opts: { timeoutMs: lowMemoryMode ? 240000 : 300000 },
+      opts: { timeoutMs: lowMemoryMode ? 240000 : 420000 },
     };
   }
 
@@ -620,8 +626,10 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
 
   if (scanType === "ffuf") {
     const wordlistPath = path.join(process.cwd(), "wordlist.txt");
-    const args = ["-u", `${finalUrl}/FUZZ`, "-w", wordlistPath, "-t", lowMemoryMode ? "2" : "5", "-c"];
-    if (scanMode === "quick") args.push("-mc", "200,301");
+    const threads = lowMemoryMode ? "2" : "10";
+    const args = ["-u", `${finalUrl}/FUZZ`, "-w", wordlistPath, "-t", threads, "-c"];
+    // Medium: filter common success redirects and OK responses
+    args.push("-mc", "200,301");
 
     return {
       executable: "ffuf",
@@ -631,25 +639,25 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
   }
 
   if (scanType === "wapiti") {
-    const args = ["-u", finalUrl, "-m", "common", "-n", lowMemoryMode ? "2" : "6"];
-    if (scanMode === "full") args.push("--level", "1");
+    const args = ["-u", finalUrl, "-m", "common", "-n", lowMemoryMode ? "2" : "4"];
+    if (mode === "full") args.push("--level", "1");
     
     return {
       executable: "wapiti",
       args,
-      opts: { timeoutMs: lowMemoryMode ? 360000 : 600000 },
+      opts: { timeoutMs: lowMemoryMode ? 360000 : 420000 },
     };
   }
 
   if (scanType === "nuclei") {
     const args = ["-u", finalUrl, "-silent", "-no-color", "-c", lowMemoryMode ? "2" : "6", "-bs", lowMemoryMode ? "2" : "6"];
-    if (scanMode === "quick") args.push("-tags", "cve,exposure");
+    if (mode === "medium") args.push("-tags", "cve,exposure,tech");
     
     return {
       executable: "nuclei",
       args,
-      // ✅ OPTIMIZED: Nuclei is now first tool, needs to be fast for auto-scan
-      opts: { timeoutMs: scanMode === "quick" ? (lowMemoryMode ? 120000 : 90000) : (lowMemoryMode ? 600000 : 300000) },
+      // Timeouts: medium vs full
+      opts: { timeoutMs: mode === "full" ? (lowMemoryMode ? 600000 : 300000) : (lowMemoryMode ? 180000 : 120000) },
     };
   }
 
@@ -676,14 +684,13 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "quic
   throw new Error("Unsupported scan type");
 }
 
-async function launchScanInBackground(scanId, finalUrl, scanType, cookies = "", scanMode = "quick", sqlmapUrl = "") {
+async function launchScanInBackground(scanId, finalUrl, scanType, cookies = "", scanMode = "medium", sqlmapUrl = "") {
   try {
     if (hasProcess(scanId)) {
       return { success: false, error: "Already running" };
     }
 
     console.log(`[SCAN_SERVICE] Starting ${scanType} scan (Mode: ${scanMode}) for: ${finalUrl} (ID: ${scanId})`);
-
     // ROBUST PLATFORM DETECTION
     try {
       const detection = await detectPlatform(finalUrl);
@@ -955,7 +962,7 @@ export async function startScan(req, res) {
       return res.status(401).json({ success: false, error: "Unauthorized" });
     }
 
-    const { targetUrl, scanType, cookies, scanMode = "quick", sqlmapUrl } = req.body || {};
+    const { targetUrl, scanType, cookies, scanMode = "medium", sqlmapUrl } = req.body || {};
     if (!targetUrl || !scanType) {
       return res.status(400).json({ success: false, error: "targetUrl and scanType are required" });
     }
@@ -966,9 +973,10 @@ export async function startScan(req, res) {
     }
 
     // ✅ SECURITY FIX: Validate scanMode
-    const validModes = ["quick", "deep", "full"];
+    // Supported modes: 'medium' (default, conservative but not minimal) and 'full'.
+    const validModes = ["medium", "full"];
     if (!validModes.includes(scanMode)) {
-      return res.status(400).json({ success: false, error: "Invalid scanMode. Must be one of: quick, deep, full" });
+      return res.status(400).json({ success: false, error: "Invalid scanMode. Must be one of: medium, full" });
     }
 
     const validation = urlValidation(targetUrl);
@@ -1051,6 +1059,18 @@ export async function startScan(req, res) {
       });
     }
 
+    // Block starting a new scan if the user already has any pending/running scan
+    const existingAny = await Scan.findOne({ userId, status: { $in: ["pending", "running"] } }).lean();
+    if (existingAny) {
+      return res.status(409).json({
+        success: false,
+        error: "You already have a scan pending or running. Please wait for it to finish or cancel it before starting a new one.",
+        scanId: existingAny._id,
+        status: existingAny.status,
+      });
+    }
+
+    // Prevent duplicate scan for the same target specifically (defensive)
     const duplicateQuery = {
       userId,
       targetUrl: finalUrl,
@@ -1100,10 +1120,9 @@ export async function startScan(req, res) {
       }
 
       // 2. Generate Scan Plan based on recon.
-      // Auto-scan should use the full smart sequence on normal websites, while
-      // frontend-only targets are trimmed to the frontend-safe toolset.
-      const decisionMode = scanMode === "full" ? "deep" : scanMode;
-      const executionPlan = decideScanPlan(reconData, decisionMode || "quick");
+      // Force auto-scan to use the conservative 'medium' decision mode (balanced commands).
+      const decisionMode = "medium"; // Force conservative-medium auto-scan
+      const executionPlan = decideScanPlan(reconData, decisionMode);
       const availability = await computeToolAvailability();
       // Treat a tool as available only when explicitly true in availability.byTool
       const availableRun = executionPlan.run.filter((tool) => availability.byTool[tool] === true);
@@ -1150,7 +1169,8 @@ export async function startScan(req, res) {
         results: {
           batchId,
           mode: "all-tools",
-          scanMode,
+          // Auto-scan forced to conservative medium mode for low-memory instances
+          scanMode: "medium",
         },
       }));
 
@@ -1547,6 +1567,8 @@ export async function detectWebsite(req, res) {
         isStaticFrontend: reconData.isStaticFrontend,
         platform: reconData.platform,
         technologies: reconData.technologies,
+        dbIndicators: reconData.dbIndicators || [],
+        hasDatabase: Boolean(reconData.hasDatabase),
         evidence: reconData.evidence,
       },
       quickPlan: { run: quickPlan.run, skip: quickPlan.skip, details: quickPlan.details },

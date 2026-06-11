@@ -30,7 +30,8 @@ export async function detectPlatform(url) {
 
   try {
     // 1. Get Headers
-    const headers = await runCommand("curl", ["-I", "-s", "-L", "--max-time", "10", url]);
+    const ua = process.env.PLATFORM_USER_AGENT || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36';
+    const headers = await runCommand("curl", ["-I", "-s", "-L", "--max-time", "10", "-A", ua, url]);
     const h = headers.toLowerCase();
 
     // Server Header

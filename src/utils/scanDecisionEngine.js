@@ -2,7 +2,10 @@
  * Analyzes Reconnaissance data to determine the optimal tools to run.
  * Upgraded with explainability, confidence scoring, and structured evidence.
  */
-export function decideScanPlan(reconData, scanMode = 'deep') {
+export function decideScanPlan(reconData, scanMode = 'medium') {
+  // normalize incoming scanMode: accept 'full' or legacy 'deep' as full, everything else as medium
+  const normalizedMode = (scanMode === 'full' || scanMode === 'deep') ? 'full' : 'medium';
+
   const plan = {
     run: [],
     skip: [],
@@ -45,24 +48,27 @@ export function decideScanPlan(reconData, scanMode = 'deep') {
     setDecision('ssl', 'skip', 'No HTTPS port detected', 0.95, ['Only HTTP detected']);
   }
   
-  // 3. Nmap (lightweight version for quick mode)
+  // 3. Nmap (lightweight version for medium mode)
   setDecision('nmap', 'run', 'Core port scanning', 1.0);
   
   // 4. Nikto web server audit
-  if (scanMode === 'quick') {
-    setDecision('nikto', 'skip', 'Heavy web scanner skipped in Quick Scan mode', 0.9);
+  if (normalizedMode === 'medium') {
+    setDecision('nikto', 'skip', 'Heavier web scanning skipped in Medium Scan mode', 0.9);
   } else {
-    setDecision('nikto', 'run', 'Standard web vulnerability scanner for deep scan', 0.8);
+    setDecision('nikto', 'run', 'Standard web vulnerability scanner for full scan', 0.8);
   }
 
   // 5. Input-aware web app checks
   // SQLMap and Wapiti are only useful when the app shows signs of backend or forms.
+  // Heuristic: if forms exist AND DB indicators (WhatWeb or open DB ports) are present => enable sqlmap with high confidence.
+  const dbHints = Array.isArray(reconData.dbIndicators) ? reconData.dbIndicators : [];
+
   if (reconData.isStaticFrontend) {
     setDecision('sqlmap', 'skip', 'Static frontend detected (no backend database)', 0.95, evidence.htmlIndicators);
 
     if (reconData.hasInputForms || reconData.hasLoginForm) {
-      if (scanMode === 'quick') {
-        setDecision('wapiti', 'skip', 'Static frontend forms detected, but heavy form crawling is skipped in Quick Scan mode', 0.9, evidence.htmlIndicators);
+      if (normalizedMode === 'medium') {
+        setDecision('wapiti', 'skip', 'Static frontend forms detected, but heavy form crawling is skipped in Medium Scan mode', 0.9, evidence.htmlIndicators);
       } else {
         setDecision('wapiti', 'run', 'Static frontend has forms, so form-aware checks are still useful', 0.85, evidence.htmlIndicators);
       }
@@ -70,9 +76,16 @@ export function decideScanPlan(reconData, scanMode = 'deep') {
       setDecision('wapiti', 'skip', 'Static frontend detected (no forms to test)', 0.95, evidence.htmlIndicators);
     }
   } else if (reconData.hasInputForms || reconData.hasLoginForm) {
-    setDecision('sqlmap', 'run', 'Input forms detected on target', 0.9, [`Forms counted: ${evidence.formCount}`]);
-    if (scanMode === 'quick') {
-      setDecision('wapiti', 'skip', 'Heavy payload scanner skipped in Quick Scan mode', 0.9);
+    // If DB hints are present, mark SQLMap as high confidence run
+    if (dbHints.length > 0) {
+      setDecision('sqlmap', 'run', 'Forms + DB indicators detected (WhatWeb/ports) — enabling SQLMap', 0.95, [`Forms counted: ${evidence.formCount}`, `DB hints: ${dbHints.join(', ')}`]);
+    } else {
+      // No explicit DB hints — still consider running SQLMap but with slightly less confidence
+      setDecision('sqlmap', 'run', 'Input forms detected on target (no explicit DB hints)', 0.8, [`Forms counted: ${evidence.formCount}`]);
+    }
+
+    if (normalizedMode === 'medium') {
+      setDecision('wapiti', 'skip', 'Heavy payload scanner skipped in Medium Scan mode', 0.9);
     } else {
       setDecision('wapiti', 'run', 'Input forms detected, testing for XSS/CSRF/SQL injection vulnerabilities', 0.85, [`Forms counted: ${evidence.formCount}`]);
     }
@@ -88,25 +101,25 @@ export function decideScanPlan(reconData, scanMode = 'deep') {
   } else {
     // For backend sites, include ratelimit in deep mode or if backend is confirmed
     const hasBackendDetected = !reconData.isStaticFrontend && (reconData.hasInputForms || reconData.hasLoginForm);
-    if (scanMode === 'deep' || hasBackendDetected) {
-      setDecision('ratelimit', 'run', hasBackendDetected ? 'Backend detected: testing API throttling' : 'Deep scan: request throttling check', 0.8);
+    if (normalizedMode === 'full' || hasBackendDetected) {
+      setDecision('ratelimit', 'run', hasBackendDetected ? 'Backend detected: testing API throttling' : 'Full scan: request throttling check', 0.8);
     } else {
-      setDecision('ratelimit', 'skip', 'Skipped in Quick Scan mode for non-backend target', 0.9);
+      setDecision('ratelimit', 'skip', 'Skipped in Medium Scan mode for non-backend target', 0.9);
     }
   }
 
   // 7. Deep discovery / auxiliary checks
   const hasBackendDetected = !reconData.isStaticFrontend && (reconData.hasInputForms || reconData.hasLoginForm);
 
-  if (scanMode === 'deep' || hasBackendDetected) {
-    setDecision('gobuster', 'run', hasBackendDetected ? 'Backend detected: running directory discovery' : 'Deep scan requested: active directory brute forcing', 0.9);
-    setDecision('ffuf', 'run', hasBackendDetected ? 'Backend detected: running endpoint fuzzing' : 'Deep scan requested: fast fuzzing for hidden endpoints', 0.85);
-    setDecision('dns', 'run', hasBackendDetected ? 'Backend detected: running DNS enumeration' : 'Deep scan requested: domain enumeration', 0.9);
+  if (normalizedMode === 'full' || hasBackendDetected) {
+    setDecision('gobuster', 'run', hasBackendDetected ? 'Backend detected: running directory discovery' : 'Full scan requested: active directory brute forcing', 0.9);
+    setDecision('ffuf', 'run', hasBackendDetected ? 'Backend detected: running endpoint fuzzing' : 'Full scan requested: fast fuzzing for hidden endpoints', 0.85);
+    setDecision('dns', 'run', hasBackendDetected ? 'Backend detected: running DNS enumeration' : 'Full scan requested: domain enumeration', 0.9);
     setDecision('whois', 'run', 'Domain ownership and registration lookup', 0.85);
   } else {
-    setDecision('gobuster', 'skip', 'Skipped in Quick Scan mode', 0.95);
-    setDecision('ffuf', 'skip', 'Skipped in Quick Scan mode', 0.9);
-    setDecision('dns', 'run', 'Quick domain inspection', 0.8);
+    setDecision('gobuster', 'skip', 'Skipped in Medium Scan mode', 0.95);
+    setDecision('ffuf', 'skip', 'Skipped in Medium Scan mode', 0.9);
+    setDecision('dns', 'run', 'Standard domain inspection', 0.8);
     setDecision('whois', 'run', 'Domain ownership lookup', 0.85);
   }
 
