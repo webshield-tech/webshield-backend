@@ -25,7 +25,8 @@ import { validateTargetHost, isLocalhostRequest, ALLOWED_BRIDGE_HOSTS } from "..
 const execPromise = util.promisify(exec);
 const execFilePromise = util.promisify(execFile);
 
-const ALLOWED_SCANS = ["nmap", "nikto", "ssl", "sqlmap", "gobuster", "ratelimit", "ffuf", "wapiti", "nuclei", "dns", "whois"];
+// Essential tools only — sized for low-memory EC2 free-tier instances
+const ALLOWED_SCANS = ["nmap", "nikto", "ssl", "sqlmap", "ffuf"];
 const DAILY_PER_TOOL_LIMIT = 10;
 const DAILY_AUTO_LIMIT = 5;
 
@@ -64,37 +65,26 @@ async function checkBinaryAvailable(binaryName) {
 async function computeToolAvailability() {
   const byTool = {};
 
+  // Only check the essential tools used in the scan pipeline
   const binaryChecks = {
-    nmap: "nmap",
-    nikto: "nikto",
-    sqlmap: "sqlmap",
+    nmap:    "nmap",
+    nikto:   "nikto",
+    sqlmap:  "sqlmap",
     sslscan: "sslscan",
-    gobuster: "gobuster",
-    ffuf: "ffuf",
-    wapiti: "wapiti",
-    nuclei: "nuclei",
-    whois: "whois",
-    whatweb: "whatweb",
+    ffuf:    "ffuf",
   };
 
   for (const [tool, bin] of Object.entries(binaryChecks)) {
     byTool[tool] = await checkBinaryAvailable(bin);
   }
 
-  // Alias for scanType "ssl" used in auto scans
+  // "ssl" scanType maps to sslscan binary
   byTool.ssl = byTool.sslscan === true;
-  byTool.sslscan = byTool.ssl === true;
 
+  // dns/whois availability (inline tools only — not in scan pipeline)
   const nodeAvailable = await checkBinaryAvailable("node");
-  const pythonAvailable = await checkBinaryAvailable("python3");
-  const scriptChecks = {
-    ratelimit: path.join(process.cwd(), "src", "utils", "ratelimit-test.py"),
-    dns: path.join(process.cwd(), "src", "utils", "dns-verify.js"),
-  };
-
-  for (const [tool, scriptPath] of Object.entries(scriptChecks)) {
-    byTool[tool] = (tool === "ratelimit" ? pythonAvailable : nodeAvailable) && fs.existsSync(scriptPath);
-  }
+  byTool.dns   = nodeAvailable && fs.existsSync(path.join(process.cwd(), "src", "utils", "dns-verify.js"));
+  byTool.whois = await checkBinaryAvailable("whois");
 
   const available = Object.entries(byTool)
     .filter(([, ok]) => ok)
@@ -456,100 +446,82 @@ function isRunningAsRoot() {
 }
 
 async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "medium", sqlmapUrl = "") {
-  // Normalize to either 'full' or 'medium' (treat anything else as medium)
   const mode = scanMode === "full" ? "full" : "medium";
   const hostname = resolveHostname(finalUrl);
   const lowMemoryMode = isLowMemoryMode();
 
   if (scanType === "nmap") {
-    let args = [];
+    // Medium: top 1000 ports, service version, no scripts (fast & memory-safe)
+    // Full: common ports + vuln scripts, still bounded by host-timeout
+    let args;
     if (mode === "full") {
       args = [
-        "-p-",
-        "-sV",
-        "-sC",
-        "--script",
-        "vuln",
-        "-v",
-        "--max-retries",
-        "1",
-        "--host-timeout",
-        "600s",
+        "-Pn", "-p", "1-10000",
+        "-sV", "--version-intensity", "3",
+        "--script", "vuln",
+        "--max-retries", "1",
+        "--host-timeout", "300s",
+        "-T3",
         hostname,
       ];
     } else {
-      // Medium nmap profile: broader than a tiny quick scan but constrained for low-memory hosts
       args = [
-        "-Pn",
-        "-p",
-        "1-1024",
-        "--max-retries",
-        "1",
-        "--host-timeout",
-        "120s",
-        // Moderate timing for reasonable speed without overwhelming CPU
+        "-Pn", "-p", "1-1024",
+        "-sV", "--version-intensity", "2",
+        "--max-retries", "1",
+        "--host-timeout", "90s",
         "-T4",
         hostname,
       ];
     }
-
-    if (shouldEnableNmapOsDetection() && mode === "full") {
-      const osFlags = isRunningAsRoot() ? ["-O"] : ["--privileged", "-O"];
-      args.splice(args.indexOf("-sV"), 0, ...osFlags);
-    }
-
     return {
       executable: "nmap",
       args,
-      // Timeouts scaled for medium vs full
-      opts: { timeoutMs: mode === "full" ? 900000 : 120000, maxRaw: 300000 },
+      opts: { timeoutMs: mode === "full" ? 360000 : 120000, maxRaw: 300000 },
     };
   }
 
   if (scanType === "nikto") {
-    // Nikto sometimes fails to resolve localhost (IPv6 ::1 issues). Force 127.0.0.1.
-    const niktoUrl = finalUrl.replace(/^https?:\/\/localhost(:\d+)?/i, (match, port) => {
-      return match.replace("localhost", "127.0.0.1");
-    });
-    const maxtime = mode === "full" ? "300s" : "180s";
-    const args = ["-h", niktoUrl, "-maxtime", maxtime, "-nointeractive"];
-    if (mode === "medium") {
-      // include a bit more tuning for medium scans
-      args.push("-Tuning", "b,c");
-    }
+    // Force 127.0.0.1 for localhost (avoids IPv6 ::1 resolution issues)
+    const niktoUrl = finalUrl.replace(/^https?:\/\/localhost(:\d+)?/i, (m, port) =>
+      m.replace("localhost", "127.0.0.1")
+    );
+    // Tuning: b=software identification, c=interesting files — fast and always produces output
+    const args = [
+      "-h", niktoUrl,
+      "-maxtime", mode === "full" ? "240s" : "120s",
+      "-nointeractive",
+      "-Tuning", mode === "full" ? "1,2,3,b,c" : "b,c",
+    ];
     return {
       executable: "nikto",
       args,
-      opts: { timeoutMs: mode === "full" ? 360000 : 240000 },
+      opts: { timeoutMs: mode === "full" ? 300000 : 180000 },
     };
   }
 
   if (scanType === "ssl") {
-    const sslArgs =
-      mode === "full"
-        ? ["--no-colour", "--show-certificate", "--heartbleed", resolveSslTarget(finalUrl)]
-        : ["--no-colour", "--show-certificate", resolveSslTarget(finalUrl)];
-
+    // Always include --no-colour and --show-certificate; add --heartbleed on full
+    const target = resolveSslTarget(finalUrl);
+    const args = ["--no-colour", "--show-certificate", target];
+    if (mode === "full") args.splice(2, 0, "--heartbleed");
     return {
       executable: "sslscan",
-      args: sslArgs,
-      // Timeouts: medium shorter than full
-      opts: { timeoutMs: mode === "full" ? 120000 : 90000, maxRaw: 200000 },
+      args,
+      opts: { timeoutMs: 90000, maxRaw: 200000 },
     };
   }
 
   if (scanType === "sqlmap") {
-    // Use provided sqlmapUrl if available, otherwise fall back to auto-construction
     let sqlmapTarget = sqlmapUrl || buildSqlmapTarget(finalUrl);
     let sqlmapCookies = cookies || "";
 
-    // Local DVWA convenience: auto-login to fetch cookies
+    // Local DVWA convenience: auto-login to get session cookies
     if (!sqlmapCookies) {
       try {
         const dvwa = await prepareDvwaSqlmapContext(finalUrl);
         if (dvwa?.cookies) {
           sqlmapCookies = dvwa.cookies;
-          // Only auto-construct the target if the user didn't explicitly provide one
           if (!sqlmapUrl && !finalUrl.includes("?")) {
             sqlmapTarget = dvwa.sqlmapTarget;
           }
@@ -559,12 +531,10 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "medi
       }
     }
 
-    const level = mode === "full" ? "5" : "4"; // medium uses level 4
-    const risk  = mode === "full" ? "3" : "2";
-    const threadCount = lowMemoryMode ? "1" : "2";
-
-    // Unique output dir per scan prevents cached "not injectable" sessions
-    // from a previous run poisoning the results of this one.
+    // Memory-safe settings: low level/risk, 1 thread, short timeout, no dump
+    const threadCount = "1";
+    const level = mode === "full" ? "3" : "2";
+    const risk  = mode === "full" ? "2" : "1";
     const outputDir = `/tmp/sqlmap-${Date.now()}`;
 
     const args = [
@@ -573,111 +543,49 @@ async function getScanCommand(scanType, finalUrl, cookies = "", scanMode = "medi
       "--level", level,
       "--risk",  risk,
       "--threads", threadCount,
-      "--timeout", "30",
-      "--retries", "2",
+      "--timeout", "20",
+      "--retries", "1",
       "--random-agent",
-      "--technique", "BEUST",
-      "--flush-session",   // always start fresh — never resume a stale cache
+      "--technique", "BEU",      // Boolean, Error-based, Union — fast techniques only
+      "--flush-session",
       "--disable-coloring",
       "--output-dir", outputDir,
     ];
 
-    if (mode === "full") {
-      args.push("--dump-all");
-      if (!sqlmapTarget.includes("?")) args.push("--forms", "--crawl", "3");
-    } else {
-      if (!sqlmapTarget.includes("?")) args.push("--forms", "--crawl", "2");
+    // Add form crawling if no query string present
+    if (!sqlmapTarget.includes("?")) {
+      args.push("--forms", "--crawl", mode === "full" ? "2" : "1");
     }
 
-    if (sqlmapCookies) {
-      args.push("--cookie", sqlmapCookies);
-    }
+    if (sqlmapCookies) args.push("--cookie", sqlmapCookies);
 
     return {
       executable: "sqlmap",
       args,
       opts: {
-        timeoutMs: mode === "full" ? 600000 : 360000,
-        maxRaw: 500000,
+        timeoutMs: mode === "full" ? 420000 : 240000,
+        maxRaw: 400000,
       },
-    };
-  }
-
-  if (scanType === "gobuster") {
-    const wordlistPath = path.join(process.cwd(), "wordlist.txt");
-    const threads = lowMemoryMode ? "2" : "10";
-    const args = ["dir", "-u", finalUrl, "-w", wordlistPath, "-t", threads, "--no-error"];
-
-    return {
-      executable: "gobuster",
-      args,
-      opts: { timeoutMs: lowMemoryMode ? 240000 : 420000 },
-    };
-  }
-
-  if (scanType === "ratelimit") {
-    const scriptPath = path.join(process.cwd(), "src", "utils", "ratelimit-test.py");
-    return {
-      executable: "python3",
-      args: [scriptPath, finalUrl],
-      opts: { timeoutMs: 180000 },
     };
   }
 
   if (scanType === "ffuf") {
     const wordlistPath = path.join(process.cwd(), "wordlist.txt");
-    const threads = lowMemoryMode ? "2" : "10";
-    const args = ["-u", `${finalUrl}/FUZZ`, "-w", wordlistPath, "-t", threads, "-c"];
-    // Medium: filter common success redirects and OK responses
-    args.push("-mc", "200,301");
-
+    // 2 threads on low-memory, 5 on normal — never go higher to protect the EC2 instance
+    const threads = lowMemoryMode ? "2" : "5";
+    const args = [
+      "-u", `${finalUrl}/FUZZ`,
+      "-w", wordlistPath,
+      "-t", threads,
+      "-mc", "200,204,301,302,403",  // capture useful status codes
+      "-timeout", "10",
+      "-of", "json",                  // structured output for easier parsing
+      "-o", `/tmp/ffuf-${Date.now()}.json`,
+    ];
     return {
       executable: "ffuf",
       args,
-      opts: { timeoutMs: lowMemoryMode ? 240000 : 300000 },
-    };
-  }
-
-  if (scanType === "wapiti") {
-    const args = ["-u", finalUrl, "-m", "common", "-n", lowMemoryMode ? "2" : "4"];
-    if (mode === "full") args.push("--level", "1");
-    
-    return {
-      executable: "wapiti",
-      args,
-      opts: { timeoutMs: lowMemoryMode ? 360000 : 420000 },
-    };
-  }
-
-  if (scanType === "nuclei") {
-    const args = ["-u", finalUrl, "-silent", "-no-color", "-c", lowMemoryMode ? "2" : "6", "-bs", lowMemoryMode ? "2" : "6"];
-    if (mode === "medium") args.push("-tags", "cve,exposure,tech");
-    
-    return {
-      executable: "nuclei",
-      args,
-      // Timeouts: medium vs full
-      opts: { timeoutMs: mode === "full" ? (lowMemoryMode ? 600000 : 300000) : (lowMemoryMode ? 180000 : 120000) },
-    };
-  }
-
-  if (scanType === "dns") {
-    const scriptPath = path.join(process.cwd(), "src", "utils", "dns-verify.js");
-    const hostname = new URL(finalUrl).hostname;
-    return {
-      executable: "node",
-      args: [scriptPath, hostname],
-      opts: { timeoutMs: 30000 },
-    };
-  }
-
-  if (scanType === "whois") {
-    const whoisTarget = resolveWhoisQuery(finalUrl);
-    
-    return {
-      executable: "whois",
-      args: [whoisTarget],
-      opts: { timeoutMs: 30000 },
+      opts: { timeoutMs: lowMemoryMode ? 180000 : 240000 },
     };
   }
 
@@ -770,9 +678,8 @@ async function getTodayScanStats(userId) {
     .select("scanType results.batchId results.mode")
     .lean();
 
-  const byTool = { 
-    nmap: 0, nikto: 0, ssl: 0, sqlmap: 0, gobuster: 0, 
-    ratelimit: 0, ffuf: 0, wapiti: 0, nuclei: 0, dns: 0, whois: 0
+  const byTool = {
+    nmap: 0, nikto: 0, ssl: 0, sqlmap: 0, ffuf: 0
   };
   const autoBatchIds = new Set();
 

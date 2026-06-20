@@ -446,34 +446,26 @@ export function parseByTool(executable, rawOutput, target, scanType = "") {
   const normalizedType = String(scanType || "").toLowerCase();
   const mappedType = normalizedType === "sslscan" ? "ssl" : normalizedType;
 
+  // Dispatch by scanType (most reliable)
   if (mappedType) {
-    if (mappedType === "nmap") return parseNmap(rawOutput, target);
-    if (mappedType === "nikto") return parseNikto(rawOutput, target);
+    if (mappedType === "nmap")   return parseNmap(rawOutput, target);
+    if (mappedType === "nikto")  return parseNikto(rawOutput, target);
     if (mappedType === "sqlmap") return parseSqlmap(rawOutput, target);
-    if (mappedType === "ssl") return parseSsl(rawOutput, target);
-    if (mappedType === "gobuster") return parseGobuster(rawOutput, target);
-    if (mappedType === "ratelimit") return parseRateLimit(rawOutput, target);
-    if (mappedType === "ffuf") return parseFfuf(rawOutput, target);
-    if (mappedType === "wapiti") return parseWapiti(rawOutput, target);
-    if (mappedType === "nuclei") return parseNuclei(rawOutput, target);
-    if (mappedType === "dns") return parseDns(rawOutput, target);
-    if (mappedType === "whois") return parseWhois(rawOutput, target);
+    if (mappedType === "ssl")    return parseSsl(rawOutput, target);
+    if (mappedType === "ffuf")   return parseFfuf(rawOutput, target);
+    if (mappedType === "dns")    return parseDns(rawOutput, target);
+    if (mappedType === "whois")  return parseWhois(rawOutput, target);
   }
 
-  // Map common executable names to parser
+  // Fallback: map by executable name
   const bin = (executable || "").toLowerCase();
-  if (bin.includes("nmap")) return parseNmap(rawOutput, target);
-  if (bin.includes("nikto")) return parseNikto(rawOutput, target);
-  if (bin.includes("sqlmap")) return parseSqlmap(rawOutput, target);
-  if (bin.includes("ssl") || bin.includes("sslscan"))
-    return parseSsl(rawOutput, target);
-  if (bin.includes("gobuster")) return parseGobuster(rawOutput, target);
-  if (bin.includes("ratelimit")) return parseRateLimit(rawOutput, target);
-  if (bin.includes("ffuf")) return parseFfuf(rawOutput, target);
-  if (bin.includes("wapiti")) return parseWapiti(rawOutput, target);
-  if (bin.includes("nuclei")) return parseNuclei(rawOutput, target);
-  if (bin.includes("dns")) return parseDns(rawOutput, target);
-  if (bin.includes("whois")) return parseWhois(rawOutput, target);
+  if (bin.includes("nmap"))               return parseNmap(rawOutput, target);
+  if (bin.includes("nikto"))              return parseNikto(rawOutput, target);
+  if (bin.includes("sqlmap"))             return parseSqlmap(rawOutput, target);
+  if (bin.includes("ssl") || bin.includes("sslscan")) return parseSsl(rawOutput, target);
+  if (bin.includes("ffuf"))              return parseFfuf(rawOutput, target);
+  if (bin.includes("dns"))               return parseDns(rawOutput, target);
+  if (bin.includes("whois"))             return parseWhois(rawOutput, target);
 
   // Default: return raw output only
   return {
@@ -574,9 +566,44 @@ export function parseRateLimit(rawOutput = "", target = "") {
 }
 
 export function parseFfuf(rawOutput = "", target = "") {
-  const lines = rawOutput.split("\n");
   const findings = [];
   const protectedPaths = [];
+
+  // Try JSON output first (our ffuf command now uses -of json)
+  try {
+    const jsonMatch = rawOutput.match(/\{[\s\S]+\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      const results = parsed?.results || [];
+      for (const r of results) {
+        const status = r.status;
+        const path   = r.input?.FUZZ || r.url || r.host || "unknown";
+        if ([200, 204, 301, 302].includes(status)) {
+          findings.push({ path, status, size: r.length || 0 });
+        } else if ([401, 403].includes(status)) {
+          protectedPaths.push({ path, status, note: "Protected resource" });
+        }
+      }
+      const success = results.length > 0 || findings.length > 0;
+      return {
+        tool: "ffuf",
+        success,
+        ran: true,
+        findings,
+        protectedPaths,
+        count: findings.length,
+        total: findings.length + protectedPaths.length,
+        summary: success
+          ? `FFUF found ${findings.length} path(s) and ${protectedPaths.length} protected path(s) on ${target}`
+          : `FFUF completed — no accessible hidden paths found on ${target}`,
+        rawOutput,
+        target,
+      };
+    }
+  } catch { /* not JSON, fall through to text parsing */ }
+
+  // Plain-text fallback (older invocations)
+  const lines = rawOutput.split("\n");
   const looksLikeFfuf = /FUZZ|ffuf|Starting|Progress|Status:/i.test(rawOutput);
 
   for (const line of lines) {
@@ -585,7 +612,7 @@ export function parseFfuf(rawOutput = "", target = "") {
     const status = parseInt(statusMatch[1], 10);
     const wordMatch = line.match(/\*\s*FUZZ:\s*(.+?)\s*\[/);
     const word = wordMatch ? wordMatch[1].trim() : line.trim();
-    if ([200, 301, 302].includes(status)) {
+    if ([200, 204, 301, 302].includes(status)) {
       findings.push({ path: word, status });
     } else if ([403, 401].includes(status)) {
       protectedPaths.push({ path: word, status, note: "Protected resource" });
@@ -792,5 +819,4 @@ export function parseXss(rawOutput = "", target = "") {
   };
 }
 
-// NOTE: parseXss is kept for backwards compatibility but the XSS scanner tool has been removed.
-// Wapiti now covers XSS and SSRF detection as part of its comprehensive web vulnerability scanning.
+// parseXss kept for backwards compatibility with old scan records in the database.

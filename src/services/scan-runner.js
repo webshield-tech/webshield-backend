@@ -126,28 +126,18 @@ export async function startProcess(scanId, executable, args = [], opts = {}) {
             status = "completed";
           }
         } else if (executable.includes("sqlmap")) {
-          // parseSqlmap.success = scan ran OK; parseSqlmap.vulnerable = injection found
-          // Both cases are "completed" — failure is only when sqlmap never even started
-          if (parsed.success || parsed.vulnerable) {
-            status = "completed";
-          } else if (out.length > 100) {
-            // Some output produced — still mark completed
+          // success = scan ran; vulnerable = injection found. Both = completed.
+          // Only truly fail if sqlmap produced zero output at all.
+          if (parsed.success || parsed.vulnerable || out.length > 100) {
             status = "completed";
           }
         } else if (executable.includes("ssl") || executable.includes("sslscan")) {
-          // parseSsl.success = true means sslscan produced recognizable output
-          if (parsed.success) {
-            status = "completed";
-          } else if (out.length > 200) {
-            // If there's significant output, treat as completed even if not parsed
+          if (parsed.success || out.length > 200) {
             status = "completed";
           }
-        } else if (executable.includes("gobuster")) {
-          if (parsed.success || parsed.ran || out.length > 100) {
-            status = "completed";
-          }
-        } else if (executable.includes("wapiti")) {
-          if (parsed.success || parsed.ran || out.length > 100) {
+        } else if (executable.includes("ffuf")) {
+          // ffuf exits 0 when wordlist exhausted, non-zero on error
+          if (parsed.success || parsed.ran || out.length > 50) {
             status = "completed";
           }
         }

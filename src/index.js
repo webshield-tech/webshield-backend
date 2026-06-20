@@ -181,10 +181,17 @@ app.use(csrfProtectionMiddleware);
 
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  // Increase global allowance slightly and use per-user key when possible to avoid IP NAT collisions.
-  max: 600,
+  // Increase global allowance substantially so polling doesn't block users
+  max: 10000,
   standardHeaders: true,
   legacyHeaders: false,
+  // Skip rate limiting in development/local environments
+  skip: (req) => {
+    return (
+      String(process.env.SKIP_RATE_LIMIT || "").toLowerCase() === "true" ||
+      process.env.NODE_ENV !== "production"
+    );
+  },
   // Use user id from JWT (if present) as the rate-limit key so authenticated users are not blocked by other IP traffic.
   keyGenerator: (req) => {
     try {

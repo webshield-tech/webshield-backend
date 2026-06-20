@@ -15,18 +15,15 @@ const scanSchema = new mongoose.Schema(
       type: String,
       enum: [
         "nmap",
-        "sqlmap",
-        "ssl",
         "nikto",
-        "gobuster",
-        "ratelimit",
+        "ssl",
+        "sqlmap",
         "ffuf",
-        "wapiti",
-        "nuclei",
+        // inline tools (not scan pipeline — kept for historical records)
         "dns",
         "whois",
       ],
-      default: "nikto",
+      default: "nmap",
     },
     platform: {
       type: String,

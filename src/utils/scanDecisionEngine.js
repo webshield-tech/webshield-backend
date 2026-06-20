@@ -1,6 +1,10 @@
 /**
  * Analyzes Reconnaissance data to determine the optimal tools to run.
- * Upgraded with explainability, confidence scoring, and structured evidence.
+ * Streamlined for low-memory EC2 instances — only essential tools.
+ *
+ * Active scan tools: nmap, nikto, ssl (sslscan), sqlmap, ffuf
+ * Removed from pipeline: gobuster, wapiti, nuclei, ratelimit
+ * DNS/WHOIS remain as inline tools only (handled separately).
  */
 export function decideScanPlan(reconData, scanMode = 'medium') {
   // normalize incoming scanMode: accept 'full' or legacy 'deep' as full, everything else as medium
@@ -15,7 +19,7 @@ export function decideScanPlan(reconData, scanMode = 'medium') {
   function setDecision(tool, decision, reason, confidence, evidenceList = []) {
     if (decision === 'run') plan.run.push(tool);
     if (decision === 'skip') plan.skip.push(tool);
-    
+
     plan.details[tool] = {
       decision,
       reason,
@@ -24,105 +28,63 @@ export function decideScanPlan(reconData, scanMode = 'medium') {
     };
   }
 
-  // Fallback Safety Mechanism
+  // Fallback Safety Mechanism: host unreachable → only nmap
   if (!reconData.isAlive) {
-    console.warn("[DecisionEngine] Recon failed or host dead. Engaging fallback safe scan.");
+    console.warn('[DecisionEngine] Recon failed or host dead. Engaging fallback safe scan.');
     setDecision('nmap', 'run', 'Core port scanning fallback', 1.0, ['Host HTTP unreachable']);
-    setDecision('nuclei', 'run', 'Core vulnerability scanning fallback', 1.0, ['Host HTTP unreachable']);
-    
-    const skippedTools = ['nikto', 'sqlmap', 'wapiti', 'gobuster', 'ssl', 'dns', 'ffuf', 'ratelimit'];
-    skippedTools.forEach(t => setDecision(t, 'skip', 'Recon failed, fallback safe scan applied', 1.0, ['Host HTTP unreachable']));
+
+    const skippedTools = ['nikto', 'sqlmap', 'ssl', 'ffuf'];
+    skippedTools.forEach(t =>
+      setDecision(t, 'skip', 'Recon failed, fallback safe scan applied', 1.0, ['Host HTTP unreachable'])
+    );
     return plan;
   }
 
   const { evidence } = reconData;
-
-  // ✅ OPTIMIZED: Run tools in order of speed (fastest first for better UX)
-  // 1. Nuclei (fastest - template matching)
-  setDecision('nuclei', 'run', 'Fast template-based vulnerability scanning', 1.0);
-  
-  // 2. SSL check (very fast if port 443 is open)
-  if (reconData.hasSSL || reconData.openPorts.includes(443)) {
-    setDecision('ssl', 'run', 'HTTPS (port 443) detected', 0.98, ['Port 443 is open or https:// scheme used']);
-  } else {
-    setDecision('ssl', 'skip', 'No HTTPS port detected', 0.95, ['Only HTTP detected']);
-  }
-  
-  // 3. Nmap (lightweight version for medium mode)
-  setDecision('nmap', 'run', 'Core port scanning', 1.0);
-  
-  // 4. Nikto web server audit
-  if (normalizedMode === 'medium') {
-    setDecision('nikto', 'skip', 'Heavier web scanning skipped in Medium Scan mode', 0.9);
-  } else {
-    setDecision('nikto', 'run', 'Standard web vulnerability scanner for full scan', 0.8);
-  }
-
-  // 5. Input-aware web app checks
-  // SQLMap and Wapiti are only useful when the app shows signs of backend or forms.
-  // Heuristic: if forms exist AND DB indicators (WhatWeb or open DB ports) are present => enable sqlmap with high confidence.
   const dbHints = Array.isArray(reconData.dbIndicators) ? reconData.dbIndicators : [];
 
-  if (reconData.isStaticFrontend) {
-    setDecision('sqlmap', 'skip', 'Static frontend detected (no backend database)', 0.95, evidence.htmlIndicators);
+  // 1. Nmap — always run (core port/service discovery)
+  setDecision('nmap', 'run', 'Core port and service discovery', 1.0);
 
-    if (reconData.hasInputForms || reconData.hasLoginForm) {
-      if (normalizedMode === 'medium') {
-        setDecision('wapiti', 'skip', 'Static frontend forms detected, but heavy form crawling is skipped in Medium Scan mode', 0.9, evidence.htmlIndicators);
-      } else {
-        setDecision('wapiti', 'run', 'Static frontend has forms, so form-aware checks are still useful', 0.85, evidence.htmlIndicators);
-      }
-    } else {
-      setDecision('wapiti', 'skip', 'Static frontend detected (no forms to test)', 0.95, evidence.htmlIndicators);
-    }
+  // 2. SSL/TLS scan — run only when HTTPS is present
+  if (reconData.hasSSL || (Array.isArray(reconData.openPorts) && reconData.openPorts.includes(443))) {
+    setDecision('ssl', 'run', 'HTTPS detected — auditing TLS configuration', 0.98, ['Port 443 open or https:// scheme used']);
+  } else {
+    setDecision('ssl', 'skip', 'No HTTPS detected on target', 0.95, ['Only HTTP detected']);
+  }
+
+  // 3. Nikto — always run for non-static sites (web server vulnerability audit)
+  if (reconData.isStaticFrontend) {
+    setDecision('nikto', 'skip', 'Static frontend detected — no server-side attack surface', 0.9, evidence.htmlIndicators || []);
+  } else {
+    setDecision('nikto', 'run', 'Web server vulnerability and misconfiguration audit', 0.9);
+  }
+
+  // 4. SQLMap — only when backend forms/database indicators are present
+  if (reconData.isStaticFrontend) {
+    setDecision('sqlmap', 'skip', 'Static frontend — no backend database surface', 0.95, evidence.htmlIndicators || []);
   } else if (reconData.hasInputForms || reconData.hasLoginForm) {
-    // If DB hints are present, mark SQLMap as high confidence run
     if (dbHints.length > 0) {
-      setDecision('sqlmap', 'run', 'Forms + DB indicators detected (WhatWeb/ports) — enabling SQLMap', 0.95, [`Forms counted: ${evidence.formCount}`, `DB hints: ${dbHints.join(', ')}`]);
+      setDecision('sqlmap', 'run', 'Forms + DB indicators detected — SQL injection testing', 0.95, [
+        `Forms found: ${evidence.formCount || '?'}`,
+        `DB hints: ${dbHints.join(', ')}`
+      ]);
     } else {
-      // No explicit DB hints — still consider running SQLMap but with slightly less confidence
-      setDecision('sqlmap', 'run', 'Input forms detected on target (no explicit DB hints)', 0.8, [`Forms counted: ${evidence.formCount}`]);
-    }
-
-    if (normalizedMode === 'medium') {
-      setDecision('wapiti', 'skip', 'Heavy payload scanner skipped in Medium Scan mode', 0.9);
-    } else {
-      setDecision('wapiti', 'run', 'Input forms detected, testing for XSS/CSRF/SQL injection vulnerabilities', 0.85, [`Forms counted: ${evidence.formCount}`]);
+      setDecision('sqlmap', 'run', 'Input forms detected — testing for SQL injection', 0.8, [
+        `Forms found: ${evidence.formCount || '?'}`
+      ]);
     }
   } else {
-    setDecision('sqlmap', 'skip', 'No input forms detected (saves time)', 0.85, ['No <form> elements found']);
-    setDecision('wapiti', 'skip', 'No input forms detected', 0.85, ['No <form> elements found']);
+    setDecision('sqlmap', 'skip', 'No input forms detected — skipping SQL injection test', 0.85, ['No <form> elements found']);
   }
 
-  // 6. Rate limit check — decide ONCE based on static frontend flag
-  // Do NOT set ratelimit decision multiple times (prevents double-set bug)
+  // 5. FFUF — directory fuzzing for backend targets with backend surface
   if (reconData.isStaticFrontend) {
-    setDecision('ratelimit', 'skip', 'Frontend-only target detected (no backend/API surface)', 0.9, evidence.htmlIndicators);
+    setDecision('ffuf', 'skip', 'Static frontend — no hidden backend paths to discover', 0.9, evidence.htmlIndicators || []);
   } else {
-    // For backend sites, include ratelimit in deep mode or if backend is confirmed
-    const hasBackendDetected = !reconData.isStaticFrontend && (reconData.hasInputForms || reconData.hasLoginForm);
-    if (normalizedMode === 'full' || hasBackendDetected) {
-      setDecision('ratelimit', 'run', hasBackendDetected ? 'Backend detected: testing API throttling' : 'Full scan: request throttling check', 0.8);
-    } else {
-      setDecision('ratelimit', 'skip', 'Skipped in Medium Scan mode for non-backend target', 0.9);
-    }
+    setDecision('ffuf', 'run', 'Fast directory and endpoint discovery', 0.85);
   }
 
-  // 7. Deep discovery / auxiliary checks
-  const hasBackendDetected = !reconData.isStaticFrontend && (reconData.hasInputForms || reconData.hasLoginForm);
-
-  if (normalizedMode === 'full' || hasBackendDetected) {
-    setDecision('gobuster', 'run', hasBackendDetected ? 'Backend detected: running directory discovery' : 'Full scan requested: active directory brute forcing', 0.9);
-    setDecision('ffuf', 'run', hasBackendDetected ? 'Backend detected: running endpoint fuzzing' : 'Full scan requested: fast fuzzing for hidden endpoints', 0.85);
-    setDecision('dns', 'run', hasBackendDetected ? 'Backend detected: running DNS enumeration' : 'Full scan requested: domain enumeration', 0.9);
-    setDecision('whois', 'run', 'Domain ownership and registration lookup', 0.85);
-  } else {
-    setDecision('gobuster', 'skip', 'Skipped in Medium Scan mode', 0.95);
-    setDecision('ffuf', 'skip', 'Skipped in Medium Scan mode', 0.9);
-    setDecision('dns', 'run', 'Standard domain inspection', 0.8);
-    setDecision('whois', 'run', 'Domain ownership lookup', 0.85);
-  }
-
-  console.log("[DecisionEngine] Smart Plan Generated:", { run: plan.run, skip: plan.skip });
+  console.log('[DecisionEngine] Scan Plan:', { run: plan.run, skip: plan.skip });
   return plan;
 }

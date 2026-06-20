@@ -109,22 +109,11 @@ function buildSummaryText(scan) {
     text += `Certificate Issues: ${res.certificateIssues?.slice(0, 10).join('\n') || 'None'}\n`;
     text += `TLS 1.2 Supported: ${res.supportsTLS12 ? 'Yes' : 'No'}\n`;
     text += `TLS 1.3 Supported: ${res.supportsTLS13 ? 'Yes' : 'No'}\n`;
-  } else if (scan.scanType === 'gobuster') {
-    const res = toolResults.gobuster || toolResults;
-    text += `Directories Found: ${res.directories?.slice(0, 15).join(', ') || 'None'}\n`;
-  } else if (scan.scanType === 'ratelimit') {
-    const res = toolResults.ratelimit || toolResults;
-    text += `Rate Limiting Detected: ${res.vulnerable ? 'Yes' : 'No'}\n`;
-    text += `Findings: ${res.findings?.join('\n') || 'N/A'}\n`;
   } else if (scan.scanType === 'ffuf') {
     const res = toolResults.ffuf || toolResults;
-    text += `Fuzzing Findings: ${res.findings?.slice(0, 15).join(', ') || 'None'}\n`;
-  } else if (scan.scanType === 'wapiti') {
-    const res = toolResults.wapiti || toolResults;
-    text += `Wapiti Summary: ${res.summary || 'N/A'}\n`;
-  } else if (scan.scanType === 'nuclei') {
-    const res = toolResults.nuclei || toolResults;
-    text += `Vulnerability Templates Matched: ${res.findings?.slice(0, 10).join('\n') || 'None'}\n`;
+    text += `Directories/Endpoints Found: ${res.count || 0}\n`;
+    text += `Findings: ${res.findings?.slice(0, 15).map(f => `${f.path} (${f.status})`).join(', ') || 'None'}\n`;
+    text += `Protected Paths: ${res.protectedPaths?.slice(0, 10).map(f => `${f.path} (${f.status})`).join(', ') || 'None'}\n`;
   } else if (scan.scanType === 'dns') {
     const res = toolResults.dns || toolResults;
     text += `DNS Records Found: ${Object.keys(res.records || {}).join(', ') || 'None'}\n`;
@@ -324,52 +313,11 @@ function buildStructuredScanInput(scans) {
         break;
       }
 
-      case 'gobuster': {
-        const d = r.gobuster || r;
-        scanResults.gobuster = {
-          directories: (d.directories || []).slice(0, 30),
-          count: d.count || 0,
-          status: scan.status,
-        };
-        break;
-      }
-
-      case 'nuclei': {
-        const d = r.nuclei || r;
-        scanResults.nuclei = {
-          findings: (d.findings || []).slice(0, 20),
-          count: d.count || 0,
-          status: scan.status,
-        };
-        break;
-      }
-
-      case 'wapiti': {
-        const d = r.wapiti || r;
-        scanResults.wapiti = {
-          summary: d.summary || 'No output available',
-          vulnerabilities_found: d.success || false,
-          status: scan.status,
-        };
-        break;
-      }
-
-      case 'ratelimit': {
-        const d = r.ratelimit || r;
-        scanResults.ratelimit = {
-          vulnerable: d.vulnerable || false,
-          rate_limit_active: d.rateLimitActive || false,
-          api_active: d.apiActive || false,
-          findings: d.findings || [],
-          status: scan.status,
-        };
-        break;
-      }
-
       case 'ffuf': {
         const d = r.ffuf || r;
         scanResults.ffuf = {
           findings: (d.findings || []).slice(0, 20),
+          protected_paths: (d.protectedPaths || []).slice(0, 10),
           count: d.count || 0,
           status: scan.status,
         };
@@ -450,7 +398,7 @@ Scan Overview
 ----------------------
 Batch ID      : ${batchId}
 Target        : ${targetUrl}
-Type          : ALL TOOLS (NMAP, NIKTO, SSLSCAN, SQLMAP, NUCLEI, GOBUSTER, WAPITI, DNS, WHOIS)
+Type          : ALL TOOLS (NMAP, NIKTO, SSLSCAN, SQLMAP, FFUF)
 Date          : ${new Date().toLocaleString()}
 Language      : ${language}
 Scan Quality  : ${summary.scan_quality || 'Quick Scan'}
